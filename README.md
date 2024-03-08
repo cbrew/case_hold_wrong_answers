@@ -17,4 +17,6 @@ The task is multiple choice,
 The idea from the paper is to run two models. One is trained to pick the right alternative, the
 other to avoid the wrong alternative.
 
+To do, current version is doing only one model, with a small model. Need to add the second model.
+
 
