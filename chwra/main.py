@@ -12,32 +12,34 @@ from typing import Optional, Union
 import torch
 from transformers import AutoTokenizer
 import numpy as np
-from transformers import AutoModelForMultipleChoice, TrainingArguments, Trainer
-
+from transformers import AutoModelForMultipleChoice, TrainingArguments, Trainer, AutoModelForSequenceClassification
+import torch.nn.functional as F
 
 
 accuracy = evaluate.load("accuracy")
 f1_metric = evaluate.load("f1")
 
 
+ckpt = "distilbert-base-uncased"
+save = "distilbert_base_uncased"
+
 
 # put your wandb key in an env var WANDB_API_KEY, but don't check it in, for security.
 os.environ["WANDB_PROJECT"] = "case_hold_wrong_answers"
 os.environ["WANDB_LOG_MODEL"] = "checkpoint"
 wandb.login()
-
 run = wandb.init(
-    # Set the project where this run will be logged
-    project="case_hold_wrong_answers",
+        # Set the project where this run will be logged
+        project="case_hold_wrong_answers",
 )
 case_hold = load_dataset("lex_glue", "case_hold")
 
+# model = "sentence-transformers/all-MiniLM-L6-v2"
+# save = "all_minilm_l6_v2"
 
-model = "sentence-transformers/all-MiniLM-L6-v2"
-save = "all_minilm_l6_v2"
 
 
-tokenizer = AutoTokenizer.from_pretrained(model)
+tokenizer = AutoTokenizer.from_pretrained(ckpt)
 
 
 def preprocess_function(examples):
@@ -54,9 +56,14 @@ def preprocess_function(examples):
     tokenized_examples = tokenizer(contexts, holdings, truncation=True)
     return {k: [v[i: i + 5] for i in range(0, len(v), 5)] for k, v in tokenized_examples.items()}
 
+def one_hot_ize(example):
+
+
+    example["label"] = F.one_hot(torch.tensor(example['label']), num_classes=5).float()
+    return example
+
 
 tokenized_casehold = case_hold.map(preprocess_function, batched=True)
-
 
 @dataclass
 class DataCollatorForMultipleChoice:
@@ -93,40 +100,7 @@ class DataCollatorForMultipleChoice:
         return batch
 
 
-@dataclass
-class DataCollatorForWrongAnswers:
-    """
-    Data collator that will dynamically pad the inputs for multiple choice received.
-    The difference should be that the labels are a one-cold set, not a single label.
-    """
 
-    tokenizer: PreTrainedTokenizerBase
-    padding: Union[bool, str, PaddingStrategy] = True
-    max_length: Optional[int] = None
-    pad_to_multiple_of: Optional[int] = None
-
-    def __call__(self, features):
-        label_name = "label" if "label" in features[0].keys() else "labels"
-        labels = [feature.pop(label_name) for feature in features]
-        batch_size = len(features)
-        num_choices = len(features[0]["input_ids"])
-        flattened_features = [
-            [{k: v[i] for k, v in feature.items()}
-             for i in range(num_choices)] for feature in features
-        ]
-        flattened_features = sum(flattened_features, [])
-
-        batch = self.tokenizer.pad(
-            flattened_features,
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors="pt",
-        )
-
-        batch = {k: v.view(batch_size, num_choices, -1) for k, v in batch.items()}
-        batch["labels"] = torch.tensor(labels, dtype=torch.int64)
-        return batch
 
 
 def compute_metrics(eval_pred):
@@ -135,7 +109,9 @@ def compute_metrics(eval_pred):
     return {**accuracy.compute(predictions=predictions, references=labels),
             **f1_metric.compute(predictions=predictions, references=labels,average="macro")}
 
-model = AutoModelForMultipleChoice.from_pretrained(model)
+
+model = AutoModelForMultipleChoice.from_pretrained(ckpt)
+
 
 training_args = TrainingArguments(
     output_dir=save,
@@ -153,6 +129,7 @@ training_args = TrainingArguments(
     num_train_epochs=15,
     weight_decay=0.01,
     push_to_hub=False,
+
 )
 
 trainer = Trainer(
