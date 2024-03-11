@@ -14,13 +14,15 @@ from transformers import (
 from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
+from lightning.pytorch.loggers import WandbLogger
 
 from chwra.collators import DataCollatorForMultipleChoice
-
+import wandb
 
 class DistilBertFineTune(LightningModule):
     def __init__(self):
         super().__init__()
+        self.save_hyperparameters()
         self.ckpt = "distilbert-base-uncased"
         self.distilbert: DistilBertForMultipleChoice = (
             DistilBertForMultipleChoice.from_pretrained(self.ckpt)
@@ -33,6 +35,7 @@ class DistilBertFineTune(LightningModule):
             attention_mask=batch["attention_mask"],
             labels=labels,
         )
+        # behind the scenes we get a torch.nn.CrossEntropyLoss
         return outputs.loss
 
     def validation_step(self, batch, batch_idx):
@@ -43,9 +46,10 @@ class DistilBertFineTune(LightningModule):
             labels=labels,
         )
         self.log("val_loss", outputs.loss)
+        # accuracy
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
         return optimizer
 
 
@@ -54,6 +58,8 @@ class DistilBertFineTune(LightningModule):
 def main(hparams):
     """Main function as suggeested in documentation for Trainer"""
     # recommended incantation to make good use of tensor cores.
+
+    wandb.login()
     torch.set_float32_matmul_precision('medium')
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
     model = DistilBertFineTune()
@@ -89,8 +95,12 @@ def main(hparams):
     val_dataloader = DataLoader(
         tokenized_case_hold["validation"], batch_size=4, collate_fn=collator,num_workers=7,persistent_workers=True
     )
+
+    wandb_logger = WandbLogger(log_model="all",project="case_hold_wrong_answers")
+    trainer = Trainer(logger=wandb_logger)
     trainer = Trainer(accelerator=hparams.accelerator,
                       devices=hparams.devices,
+                      val_check_interval=0.10, # large training set, check ten times per epoch
                       max_epochs=hparams.epochs)
     trainer.fit(model, train_dataloader, val_dataloader)
 
