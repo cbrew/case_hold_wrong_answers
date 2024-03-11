@@ -48,10 +48,10 @@ class DistilBertFineTune(LightningModule):
             attention_mask=batch["attention_mask"],
             labels=labels,
         )
-        preds = torch.argmax(outputs.logits, dim=1)
-        self.log("eval_accuracy",self.metric.compute(reference=labels,predictions=preds))
+        # preds = torch.argmax(outputs.logits, dim=1)
+        # self.log("eval_accuracy",self.metric.compute(reference=labels,predictions=preds))
         self.log("eval_loss", outputs.loss)
-        return preds
+        # return preds
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
