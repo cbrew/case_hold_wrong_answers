@@ -6,6 +6,7 @@ import functools
 import os
 from argparse import ArgumentParser
 
+
 from pytorch_lightning import LightningModule, Trainer
 from transformers import (
     DistilBertTokenizer,
@@ -14,7 +15,7 @@ from transformers import (
 from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.loggers import WandbLogger,Logger
 import evaluate
 
 from chwra.collators import DataCollatorForMultipleChoice
@@ -47,7 +48,6 @@ class DistilBertFineTune(LightningModule):
             attention_mask=batch["attention_mask"],
             labels=labels,
         )
-
         preds = torch.argmax(outputs.logits, dim=1)
         self.log("eval_accuracy",self.metric.compute(reference=labels,predictions=preds))
         self.log("eval_loss", outputs.loss)
@@ -88,7 +88,7 @@ def main(hparams):
 
         holdings = sum(examples["endings"], [])
 
-        tokenized_examples = tokenizer(contexts, holdings, truncation=True)
+        tokenized_examples = tokenizer(contexts, holdings, truncation=True,max_length=512)
         features = {
             k: [v[i: i + 5] for i in range(0, len(v), 5)]
             for k, v in tokenized_examples.items()
@@ -106,9 +106,10 @@ def main(hparams):
         tokenized_case_hold["validation"], batch_size=16, collate_fn=collator,num_workers=7,persistent_workers=True
     )
 
-    wandb_logger = WandbLogger(log_model="all",project="case_hold_wrong_answers")
-    trainer = Trainer(logger=wandb_logger)
+    wandb_logger:Logger = WandbLogger(log_model="all",project="case_hold_wrong_answers")
+
     trainer = Trainer(accelerator=hparams.accelerator,
+                      logger=wandb_logger,
                       devices=hparams.devices,
                       val_check_interval=0.10, # large training set, check ten times per epoch
                       max_epochs=hparams.epochs)
