@@ -100,10 +100,10 @@ def main(hparams):
 
     collator = DataCollatorForMultipleChoice(tokenizer)
     train_dataloader = DataLoader(
-        tokenized_case_hold["train"], batch_size=4, collate_fn=collator,num_workers=7,persistent_workers=True
+        tokenized_case_hold["train"], batch_size=16, collate_fn=collator,num_workers=7,persistent_workers=True
     )
     val_dataloader = DataLoader(
-        tokenized_case_hold["validation"], batch_size=4, collate_fn=collator,num_workers=7,persistent_workers=True
+        tokenized_case_hold["validation"], batch_size=16, collate_fn=collator,num_workers=7,persistent_workers=True
     )
 
     wandb_logger = WandbLogger(log_model="all",project="case_hold_wrong_answers")
