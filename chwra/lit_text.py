@@ -108,7 +108,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--accelerator", default="auto")
     parser.add_argument("--devices", default="auto")
-    parser.add_argument("--epochs",default=2)
+    parser.add_argument("--epochs",default=2,type=int)
     args = parser.parse_args()
     main(args)
 
