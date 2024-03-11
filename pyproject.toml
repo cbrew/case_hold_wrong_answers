@@ -6,7 +6,7 @@ authors = ["Chris Brew <brewc@dy6nm2ng4q.legal.regn.net>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.9"
 datasets = "^2.18.0"
 transformers = "^4.38.2"
 torch = "^2.2.1"
@@ -17,6 +17,7 @@ accelerate = "^0.27.2"
 lightning = "^2.2.1"
 sentencepiece = "^0.2.0"
 torchvision = "^0.17.1"
+tensorboardx = "^2.6.2.2"
 
 
 [tool.poetry.group.dev.dependencies]

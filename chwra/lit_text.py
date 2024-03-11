@@ -53,6 +53,8 @@ class DistilBertFineTune(LightningModule):
 
 def main(hparams):
     """Main function as suggeested in documentation for Trainer"""
+    # recommended incantation to make good use of tensor cores.
+    torch.set_float32_matmul_precision('medium')
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
     model = DistilBertFineTune()
     tokenizer = DistilBertTokenizer.from_pretrained(
@@ -82,10 +84,10 @@ def main(hparams):
 
     collator = DataCollatorForMultipleChoice(tokenizer)
     train_dataloader = DataLoader(
-        tokenized_case_hold["train"], batch_size=4, collate_fn=collator
+        tokenized_case_hold["train"], batch_size=4, collate_fn=collator,num_workers=7,persistent_workers=True
     )
     val_dataloader = DataLoader(
-        tokenized_case_hold["validation"], batch_size=4, collate_fn=collator
+        tokenized_case_hold["validation"], batch_size=4, collate_fn=collator,num_workers=7,persistent_workers=True
     )
     trainer = Trainer(accelerator=hparams.accelerator,
                       devices=hparams.devices,
@@ -93,7 +95,6 @@ def main(hparams):
     trainer.fit(model, train_dataloader, val_dataloader)
 
 if __name__ == "__main__":
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
     parser = ArgumentParser()
     parser.add_argument("--accelerator", default="auto")
     parser.add_argument("--devices", default="auto")
