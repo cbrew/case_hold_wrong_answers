@@ -60,6 +60,11 @@ def main(hparams):
     # recommended incantation to make good use of tensor cores.
 
     wandb.login()
+    wandb.login()
+    run = wandb.init(
+        # Set the project where this run will be logged
+        project="case_hold_wrong_answers",
+    )
     torch.set_float32_matmul_precision('medium')
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
     model = DistilBertFineTune()
