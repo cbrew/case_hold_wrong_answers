@@ -1,0 +1,104 @@
+"""
+Minimal deno of multiple choice for case hold using lightning.
+"""
+
+import functools
+import os
+from argparse import ArgumentParser
+
+from pytorch_lightning import LightningModule, Trainer
+from transformers import (
+    DistilBertTokenizer,
+    DistilBertForMultipleChoice,
+)
+from torch.utils.data.dataloader import DataLoader
+import datasets
+import torch
+
+from chwra.collators import DataCollatorForMultipleChoice
+
+
+class DistilBertFineTune(LightningModule):
+    def __init__(self):
+        super().__init__()
+        self.ckpt = "distilbert-base-uncased"
+        self.distilbert: DistilBertForMultipleChoice = (
+            DistilBertForMultipleChoice.from_pretrained(self.ckpt)
+        )
+
+    def training_step(self, batch, batch_idx):
+        labels = batch["labels"]
+        outputs = self.distilbert(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=labels,
+        )
+        return outputs.loss
+
+    def validation_step(self, batch, batch_idx):
+        labels = batch["labels"]
+        outputs = self.distilbert(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=labels,
+        )
+        self.log("val_loss", outputs.loss)
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        return optimizer
+
+
+
+
+def main(hparams):
+    """Main function as suggeested in documentation for Trainer"""
+    case_hold = datasets.load_dataset("lex_glue", "case_hold")
+    model = DistilBertFineTune()
+    tokenizer = DistilBertTokenizer.from_pretrained(
+        model.ckpt, use_fast=True, truncate=True, max_length=512
+    )
+
+    def preprocess_fn(examples):
+        """
+        Produces a collection of five token sequences, one per alternative, with the tokenizer
+        merging the contexts and the holdings as desired
+        """
+        contexts = [[context] * 5 for context in examples["context"]]
+
+        contexts = sum(contexts, [])
+
+        holdings = sum(examples["endings"], [])
+
+        tokenized_examples = tokenizer(contexts, holdings, truncation=True)
+        features = {
+            k: [v[i: i + 5] for i in range(0, len(v), 5)]
+            for k, v in tokenized_examples.items()
+        }
+        return features
+
+    tokenized_case_hold = case_hold.map(preprocess_fn, batched=True)
+    tokenized_case_hold.set_format("torch")
+
+    collator = DataCollatorForMultipleChoice(tokenizer)
+    train_dataloader = DataLoader(
+        tokenized_case_hold["train"], batch_size=4, collate_fn=collator
+    )
+    val_dataloader = DataLoader(
+        tokenized_case_hold["validation"], batch_size=4, collate_fn=collator
+    )
+    trainer = Trainer(accelerator=hparams.accelerator,
+                      devices=hparams.devices,
+                      max_epochs=hparams.epochs)
+    trainer.fit(model, train_dataloader, val_dataloader)
+
+if __name__ == "__main__":
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    parser = ArgumentParser()
+    parser.add_argument("--accelerator", default="auto")
+    parser.add_argument("--devices", default="auto")
+    parser.add_argument("--epochs",default=2)
+    args = parser.parse_args()
+    main(args)
+
+

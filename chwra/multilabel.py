@@ -19,8 +19,6 @@ class2id = {class_: id for id, class_ in enumerate(classes)}
 id2class = {id: class_ for class_, id in class2id.items()}
 
 
-
-
 model_path = "distilbert-base-uncased" if torch.backends.mps.is_available() else  "microsoft/deberta-v3-small"
 
 tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -38,6 +36,18 @@ def preprocess_function(example):
     example["labels"] = labels
     return example
 
+
+def casehold_preprocess_function(example):
+    """
+
+    :param example:
+    :return:
+    """
+    contexts = [[example["context"]] * 5]
+
+    tokenized_example = tokenizer(contexts,example['endings'],truncation=True)
+
+    return tokenized_example
 
 tokenized_dataset = dataset.map(preprocess_function)
 
