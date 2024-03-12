@@ -41,7 +41,7 @@ class DistilBertFineTune(LightningModule):
         )
 
         self.log("train_loss", outputs.loss)
-        preds = self.logits.argmax(dim=1)
+        preds = outputs.logits.argmax(dim=1)
         acc = accuracy(preds, labels,task="multiclass",num_labels=5)
         self.log("train_accuracy", acc)
 

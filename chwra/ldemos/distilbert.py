@@ -15,8 +15,7 @@ outputs = model(**{k: v.unsqueeze(0) for k, v in encoding.items()}, labels=label
 # the linear classifier still needs to be trained
 loss = outputs.loss
 logits = outputs.logits
-print(loss)
-print(logits)
-print(outputs)
-print(encoding)
+xhat = torch.argmax(logits, dim=1)
 print(labels)
+print(xhat)
+print
