@@ -89,15 +89,14 @@ class DistilBertFineTune(LightningModule):
         preds, loss, labels = self.get_preds_loss(batch)
         self.train_accuracy(preds, labels)
         self.log("train_accuracy", self.train_accuracy, on_epoch=True)
-        self.log("train_loss", loss)
+        self.log("train_loss", loss,on_epoch=True)
         return loss
 
     def validation_step(self, batch):
         preds, loss, labels = self.get_preds_loss(batch)
         self.val_accuracy(preds, labels)
-        self.log("eval_loss", loss)
-        self.log("eval_accuracy", self.val_accuracy, on_step=True)
-        return preds
+        self.log("eval_loss", loss, on_epoch=True)
+        self.log("eval_accuracy", self.val_accuracy, on_epoch=True)
 
     def get_preds_loss(self, batch):
         labels = batch["labels"]
