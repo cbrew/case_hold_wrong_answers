@@ -25,8 +25,7 @@ class MultipleChoiceLightning(nn.Module):
     Mirrors DistilBertForMultipleChoice.
     """
 
-    def __init__(self, ckpt: str = "distilbert-base-uncased",
-                 wrong_answers=False):
+    def __init__(self, ckpt: str = "distilbert-base-uncased", wrong_answers=False):
         super().__init__()
         self.dim = 768  # think this is right for distilbery
         self.ckpt = ckpt
@@ -61,50 +60,59 @@ class MultipleChoiceLightning(nn.Module):
             return reshaped_logits
 
 
-
 class DistilBertFineTune(LightningModule):
     """ "
     Fine tuning module for distilbert multiple choice
     """
 
-    def __init__(self, ckpt: str, wrong_answers: bool =False) -> None:
+    def __init__(self, ckpt: str, wrong_answers: bool = False) -> None:
         super().__init__()
         self.distilbert = MultipleChoiceLightning(
             ckpt=ckpt, wrong_answers=wrong_answers
         )
         self.ckpt = ckpt
-        self.loss_fct = nn.CrossEntropyLoss()
+
         self.num_choices = 5
         self.wrong_answers = wrong_answers
-        self.accuracy =  torchmetrics.Accuracy()
+        if self.wrong_answers:
+            self.train_accuracy = torchmetrics.classification.Accuracy(
+                task="multiclass", num_classes=self.num_choices
+            )
+            self.val_accuracy = torchmetrics.classification.Accuracy(
+                task="multiclass", num_classes=self.num_choices
+            )
+        else:
+            self.train_accuracy = torchmetrics.classification.Accuracy(task="binary")
+            self.val_accuracy = torchmetrics.classification.Accuracy(task="binary")
 
     def training_step(self, batch):
-        preds,loss = self.get_preds_loss_accuracy(batch)
-        self.log("train_accuracy",self.accuracy,on_epoch=True)
+        preds, loss, labels = self.get_preds_loss(batch)
+        self.train_accuracy(preds, labels)
+        self.log("train_accuracy", self.train_accuracy, on_epoch=True)
         self.log("train_loss", loss)
         return loss
 
     def validation_step(self, batch):
-
-
-        preds,loss = self.get_preds_loss_accuracy(batch)
-
+        preds, loss, labels = self.get_preds_loss(batch)
+        self.val_accuracy(preds, labels)
         self.log("eval_loss", loss)
-        self.log("eval_accuracy", self.accuracy, on_step=True)
+        self.log("eval_accuracy", self.val_accuracy, on_step=True)
         return preds
 
-    def get_preds_loss_accuracy(self, batch):
+    def get_preds_loss(self, batch):
         labels = batch["labels"]
         logits = self.distilbert(
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         if self.wrong_answers:
-            raise ValueError("Wrong answers not supported")
+            loss_fn = nn.BCEWithLogitsLoss()
+            loss = loss_fn(logits, labels.view(-1, 1))
+            preds = logits.softmax(dim=1)
         else:
-            loss = self.loss_fct(logits, labels)
+            loss_fn = nn.CrossEntropyLoss()
+            loss = loss_fn(logits, labels)
             preds = logits.argmax(dim=1)
-            self.accuracy(preds, labels, task="multiclass", num_classes=5)
-        return preds,loss
+        return preds, loss, labels
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
@@ -116,7 +124,9 @@ def main(hparams):
     # recommended incantation to make good use of tensor cores.
     torch.set_float32_matmul_precision("medium")
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
-    model = DistilBertFineTune(ckpt=hparams.checkpoint,wrong_answers=hparams.wrong_answers)
+    model = DistilBertFineTune(
+        ckpt=hparams.checkpoint, wrong_answers=hparams.wrong_answers
+    )
     tokenizer = DistilBertTokenizer.from_pretrained(
         model.ckpt, use_fast=True, truncate=True, max_length=512
     )
