@@ -21,14 +21,18 @@ from torchmetrics.functional import accuracy
 from chwra.collators import DataCollatorForMultipleChoice
 import wandb
 
+
+
 class DistilBertFineTune(LightningModule):
     def __init__(self):
         super().__init__()
         self.ckpt = "distilbert-base-uncased"
-        # XXX
+
         self.distilbert: DistilBertForMultipleChoice = (
             DistilBertForMultipleChoice.from_pretrained(self.ckpt)
         )
+
+
 
 
     def training_step(self, batch, batch_idx):
@@ -52,15 +56,13 @@ class DistilBertFineTune(LightningModule):
             attention_mask=batch["attention_mask"],
             labels=labels,
         )
-
-
-
         self.log("eval_loss", outputs.loss)
 
         preds = outputs.logits.argmax(dim=1)
         acc = accuracy(preds, labels,task="multiclass",num_classes=5)
         self.log("eval_accuracy", acc)
         return preds
+
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
@@ -112,10 +114,12 @@ def main(hparams):
 
     wandb_logger:Logger = WandbLogger(log_model="all",project="case_hold_wrong_answers")
 
+    wandb.define_metric("eval_accuracy", summary="max")
+    wandb.define_metric("train_accuracy", summary="max")
     trainer = Trainer(accelerator=hparams.accelerator,
                       logger=wandb_logger,
                       devices=hparams.devices,
-                      val_check_interval=0.10, # large training set, check ten times per epoch
+                      val_check_interval=0.25, # large training set, check four times per epoch
                       max_epochs=hparams.epochs)
     trainer.fit(model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
 
