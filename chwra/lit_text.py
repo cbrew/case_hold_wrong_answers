@@ -69,6 +69,7 @@ class DistilBertFineTune(LightningModule):
         self.ckpt = ckpt
         self.loss_fct = nn.CrossEntropyLoss()
         self.num_choices = 5
+        self.wrong_answers = wrong_answers
 
     def training_step(self, batch):
         labels = batch["labels"]
