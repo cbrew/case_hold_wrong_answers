@@ -117,7 +117,7 @@ def main(hparams):
                       devices=hparams.devices,
                       val_check_interval=0.10, # large training set, check ten times per epoch
                       max_epochs=hparams.epochs)
-    trainer.fit(model, train_dataloader, val_dataloader)
+    trainer.fit(model, train_dataloaders=[train_dataloader], val_dataloaders=[val_dataloader])
 
 if __name__ == "__main__":
     parser = ArgumentParser()
