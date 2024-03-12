@@ -16,7 +16,7 @@ from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
 from lightning.pytorch.loggers import WandbLogger,Logger
-import evaluate
+from torchmetrics.functional import accuracy
 
 from chwra.collators import DataCollatorForMultipleChoice
 import wandb
@@ -26,10 +26,11 @@ class DistilBertFineTune(LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.ckpt = "distilbert-base-uncased"
+        # XXX
         self.distilbert: DistilBertForMultipleChoice = (
             DistilBertForMultipleChoice.from_pretrained(self.ckpt)
         )
-        self.metric = evaluate.load("accuracy")
+
 
     def training_step(self, batch, batch_idx):
         labels = batch["labels"]
@@ -38,8 +39,11 @@ class DistilBertFineTune(LightningModule):
             attention_mask=batch["attention_mask"],
             labels=labels,
         )
-        # behind the scenes we get a torch.nn.CrossEntropyLoss
-        return outputs.loss
+
+        self.log("train_loss", outputs.loss)
+        preds = self.logits.argmax(dim=1)
+        acc = accuracy(preds, labels,task="multiclass",num_labels=5)
+        self.log("train_accuracy", acc)
 
     def validation_step(self, batch, batch_idx):
         labels = batch["labels"]
@@ -48,10 +52,13 @@ class DistilBertFineTune(LightningModule):
             attention_mask=batch["attention_mask"],
             labels=labels,
         )
-        # preds = torch.argmax(outputs.logits, dim=1)
         # self.log("eval_accuracy",self.metric.compute(reference=labels,predictions=preds))
+
         self.log("eval_loss", outputs.loss)
-        # return preds
+        preds = self.logits.argmax(dim=1)
+        acc = accuracy(preds, labels,task="multiclass",num_labels=5)
+        self.log("eval_accuracy", acc)
+        return preds
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
