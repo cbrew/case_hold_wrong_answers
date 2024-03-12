@@ -70,6 +70,7 @@ class DistilBertFineTune(LightningModule):
             ckpt=ckpt, wrong_answers=wrong_answers
         )
         self.ckpt = ckpt
+        self.save_hyperparameters()
 
         self.num_choices = 5
         self.wrong_answers = wrong_answers
@@ -179,6 +180,9 @@ def main(hparams):
     wandb_logger: Logger = WandbLogger(
         log_model="all", project="case_hold_wrong_answers"
     )
+    wandb_logger.experiment.config.update({"model": hparams.checkpoint,
+                                           "wrong_answers": hparams.wrong_answers,
+                                           "max_epochs": hparams.epochs})
 
     trainer = Trainer(
         accelerator=hparams.accelerator,
