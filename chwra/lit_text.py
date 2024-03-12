@@ -25,7 +25,8 @@ class MultipleChoiceLightning(nn.Module):
     Mirrors DistilBertForMultipleChoice.
     """
 
-    def __init__(self, ckpt: str = "distilbert-base-uncased", wrong_answers=False):
+    def __init__(self, ckpt: str = "distilbert-base-uncased",
+                 wrong_answers=False):
         super().__init__()
         self.dim = 768  # think this is right for distilbery
         self.ckpt = ckpt
@@ -52,8 +53,15 @@ class MultipleChoiceLightning(nn.Module):
         pooled_output = nn.ReLU()(pooled_output)  # (bs * num_choices, dim)
         pooled_output = self.dropout(pooled_output)  # (bs * num_choices, dim)
         logits = self.classifier(pooled_output)  # (bs * num_choices, 1)
-        reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
-        return reshaped_logits
+
+        if self.wrong_answers:
+            raise ValueError("Wrong answers is not supported yet.")
+        else:
+            reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
+            return reshaped_logits
+
+
+
 
 
 class DistilBertFineTune(LightningModule):
@@ -77,26 +85,10 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
 
-        if self.wrong_answers:
-            # we will calculate a Binary cross entropy loss for each of num_choices
-            # labels has shape bs*num_choices
-            bce_lossfcn = nn.BCEWithLogitsLoss()
-            total_loss = 0
-            # transform the labels to be positive when the answer is wrong, as
-            # will happen 4 times out of 5.
-            effective_labels = torch.tensor([[ int(i != label)
-                                               for i in range(self.num_choices)]
-                                             for label in labels],
-                dtype=torch.float32
-                                            )
-            for i in range(self.num_choices):
-                total_loss += bce_lossfcn(logits[:,i],effective_labels[:,i])
-            loss = total_loss
-        else:
-            loss = self.loss_fct(logits, labels)
-            preds = logits.argmax(dim=1)
-            acc = accuracy(preds, labels, task="multiclass", num_classes=5)
-            self.log("train_accuracy", acc)
+        loss = self.loss_fct(logits, labels)
+        preds = logits.argmax(dim=1)
+        acc = accuracy(preds, labels, task="multiclass", num_classes=5)
+        self.log("train_accuracy", acc)
 
         self.log("train_loss", loss)
 
