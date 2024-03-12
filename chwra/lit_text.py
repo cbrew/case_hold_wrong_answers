@@ -41,9 +41,6 @@ class DistilBertFineTune(LightningModule):
 
         self.log("train_loss", outputs.loss)
         preds = outputs.logits.argmax(dim=1)
-        with torch.no_grad():
-            acc = accuracy(preds, labels, task="multiclass", num_classes=5)
-        self.log("train_accuracy", acc)
         return preds
 
     def validation_step(self, batch, batch_idx):
@@ -57,8 +54,7 @@ class DistilBertFineTune(LightningModule):
 
         self.log("eval_loss", outputs.loss)
         preds = outputs.logits.argmax(dim=1)
-        with torch.no_grad():
-            acc = accuracy(preds, labels,task="multiclass",num_classes=5)
+        acc = accuracy(preds, labels,task="multiclass",num_classes=5)
         self.log("eval_accuracy", acc)
         return preds
 
