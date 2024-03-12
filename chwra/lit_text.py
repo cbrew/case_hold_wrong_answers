@@ -55,7 +55,7 @@ class DistilBertFineTune(LightningModule):
         # self.log("eval_accuracy",self.metric.compute(reference=labels,predictions=preds))
 
         self.log("eval_loss", outputs.loss)
-        preds = self.logits.argmax(dim=1)
+        preds = outputs.logits.argmax(dim=1)
         acc = accuracy(preds, labels,task="multiclass",num_labels=5)
         self.log("eval_accuracy", acc)
         return preds
