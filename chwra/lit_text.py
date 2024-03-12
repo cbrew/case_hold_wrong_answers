@@ -105,6 +105,7 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         if self.wrong_answers:
+            # logits will be a flattened tensor with bs*num_choices elements in them.
             loss_fn = nn.BCEWithLogitsLoss()
             loss = loss_fn(logits, labels.view(-1, 1))
             preds = logits.softmax(dim=1)
