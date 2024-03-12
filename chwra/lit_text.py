@@ -105,7 +105,7 @@ def main(hparams):
     # recommended incantation to make good use of tensor cores.
     torch.set_float32_matmul_precision("medium")
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
-    model = DistilBertFineTune()
+    model = DistilBertFineTune(hparams.cneckpoint)
     tokenizer = DistilBertTokenizer.from_pretrained(
         model.ckpt, use_fast=True, truncate=True, max_length=512
     )
