@@ -13,7 +13,6 @@ from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
 from torch import nn
-import torch.nn.functional as F
 from lightning.pytorch.loggers import WandbLogger, Logger
 import torchmetrics
 
@@ -55,9 +54,9 @@ class MultipleChoiceLightning(nn.Module):
 
         if self.wrong_answers:
             return logits
-        else:
-            reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
-            return reshaped_logits
+
+        reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
+        return reshaped_logits
 
 
 class DistilBertFineTune(LightningModule):
@@ -85,20 +84,27 @@ class DistilBertFineTune(LightningModule):
             self.train_accuracy = torchmetrics.classification.Accuracy(task="binary")
             self.val_accuracy = torchmetrics.classification.Accuracy(task="binary")
 
-    def training_step(self, batch):
-        preds, loss, labels = self.get_preds_loss(batch)
+    def training_step(self, *argmts,**kwargs):
+        batch = argmts[0]
+        preds, loss, labels = self.get_preds_loss_labels(batch)
         self.train_accuracy(preds, labels)
         self.log("train_accuracy", self.train_accuracy, on_epoch=True)
         self.log("train_loss", loss,on_epoch=True)
         return loss
 
-    def validation_step(self, batch):
-        preds, loss, labels = self.get_preds_loss(batch)
+    def validation_step(self, *argmts,**kwargs):
+        batch = argmts[0]
+        preds, loss, labels = self.get_preds_loss_labels(batch)
         self.val_accuracy(preds, labels)
         self.log("eval_loss", loss, on_epoch=True)
         self.log("eval_accuracy", self.val_accuracy, on_epoch=True)
 
-    def get_preds_loss(self, batch):
+    def get_preds_loss_labels(self, batch):
+        """
+        Shared function for training validation and testing.
+        :param batch:
+        :return:
+        """
         labels = batch["labels"]
         logits = self.distilbert(
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
