@@ -24,14 +24,17 @@ class MultipleChoiceLightning(nn.Module):
     Mirrors DistilBertForMultipleChoice.
     """
 
-    def __init__(self):
+    def __init__(self,
+                 ckpt: str = 'distilbert-base-uncased',
+                 wrong_answers = False):
         super().__init__()
         self.dim = 768
-        self.ckpt = "distilbert-base-uncased"
+        self.ckpt = ckpt
         self.distilbert = DistilBertModel.from_pretrained(self.ckpt)
         self.pre_classifier = nn.Linear(self.dim, self.dim)
         self.classifier = nn.Linear(self.dim, 1)
         self.dropout = nn.Dropout(p=0.1)
+        self.wrong_answers: bool = wrong_answers
 
     def forward(self, input_ids, attention_mask):
         """
@@ -59,10 +62,10 @@ class DistilBertFineTune(LightningModule):
     Fine tuning module for distilbert multiple choice
     """
 
-    def __init__(self):
+    def __init__(self,ckpt):
         super().__init__()
-        self.distilbert = MultipleChoiceLightning()
-        self.ckpt = self.distilbert.ckpt
+        self.distilbert = MultipleChoiceLightning(ckpt=ckpt)
+        self.ckpt = ckpt
         self.loss_fct = nn.CrossEntropyLoss()
 
     def training_step(self, batch):
@@ -163,9 +166,14 @@ def main(hparams):
 
 
 if __name__ == "__main__":
+    eligible_distilberts = ["distilbert/distilbert-base-cased",
+                            "distilbert/distilbert-base-uncased"]
     parser = ArgumentParser()
     parser.add_argument("--accelerator", default="auto")
     parser.add_argument("--devices", default="auto")
     parser.add_argument("--epochs", default=2, type=int)
+    parser.add_argument("--checkpoint",type=str,
+                        choices=eligible_distilberts,
+                        default="distilbert/distilbert-base-cased")
     args = parser.parse_args()
     main(args)
