@@ -15,7 +15,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from lightning.pytorch.loggers import WandbLogger, Logger
-from torchmetrics.functional import accuracy
+import torchmetrics
 
 from chwra.collators import DataCollatorForMultipleChoice
 
@@ -55,12 +55,10 @@ class MultipleChoiceLightning(nn.Module):
         logits = self.classifier(pooled_output)  # (bs * num_choices, 1)
 
         if self.wrong_answers:
-            raise ValueError("Wrong answers is not supported yet.")
+            return logits
         else:
             reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
             return reshaped_logits
-
-
 
 
 
@@ -78,35 +76,35 @@ class DistilBertFineTune(LightningModule):
         self.loss_fct = nn.CrossEntropyLoss()
         self.num_choices = 5
         self.wrong_answers = wrong_answers
+        self.accuracy =  torchmetrics.Accuracy()
 
     def training_step(self, batch):
-        labels = batch["labels"]
-        logits = self.distilbert(
-            input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
-        )
-
-        loss = self.loss_fct(logits, labels)
-        preds = logits.argmax(dim=1)
-        acc = accuracy(preds, labels, task="multiclass", num_classes=5)
-        self.log("train_accuracy", acc)
-
+        preds,loss = self.get_preds_loss_accuracy(batch)
+        self.log("train_accuracy",self.accuracy,on_epoch=True)
         self.log("train_loss", loss)
-
-
         return loss
 
     def validation_step(self, batch):
+
+
+        preds,loss = self.get_preds_loss_accuracy(batch)
+
+        self.log("eval_loss", loss)
+        self.log("eval_accuracy", self.accuracy, on_step=True)
+        return preds
+
+    def get_preds_loss_accuracy(self, batch):
         labels = batch["labels"]
         logits = self.distilbert(
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
-        loss = self.loss_fct(logits, labels)
-        self.log("eval_loss", loss)
-
-        preds = logits.argmax(dim=1)
-        acc = accuracy(preds, labels, task="multiclass", num_classes=5)
-        self.log("eval_accuracy", acc)
-        return preds
+        if self.wrong_answers:
+            raise ValueError("Wrong answers not supported")
+        else:
+            loss = self.loss_fct(logits, labels)
+            preds = logits.argmax(dim=1)
+            self.accuracy(preds, labels, task="multiclass", num_classes=5)
+        return preds,loss
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
