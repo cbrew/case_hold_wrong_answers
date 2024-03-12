@@ -11,54 +11,92 @@ from pytorch_lightning import LightningModule, Trainer
 from transformers import (
     DistilBertTokenizer,
     DistilBertForMultipleChoice,
+    DistilBertModel
 )
 from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
+from torch import nn
 from lightning.pytorch.loggers import WandbLogger,Logger
 from torchmetrics.functional import accuracy
 
 from chwra.collators import DataCollatorForMultipleChoice
 import wandb
 
+class MyMultipleChoice(nn.Module):
+    """
+    Mirrors DistilBertForMultipleChoice.
+    """
+    def __init__(self):
+        super().__init__()
+        self.dim = 768
+        self.ckpt = "distilbert-base-uncased"
+        self.distilbert = DistilBertModel.from_pretrained(self.ckpt)
+        self.pre_classifier = nn.Linear(self.dim,self.dim)
+        self.classifier = nn.Linear(self.dim, 1)
+        self.dropout = nn.Dropout(p=0.1)
+
+    def forward(self,input_ids,attention_mask):
+        # reshape input ids and attention mask
+        num_choices = input_ids.shape[1]
+
+        input_ids = input_ids.view(-1, input_ids.size(-1))
+        attention_mask = attention_mask.view(-1, attention_mask.size(-1))
+        outputs = self.distilbert(input_ids,attention_mask=attention_mask)
+        hidden_state = outputs[0]
+        pooled_output = hidden_state[:, 0]
+        pooled_output = self.pre_classifier(pooled_output)  # (bs * num_choices, dim)
+        pooled_output = nn.ReLU()(pooled_output)  # (bs * num_choices, dim)
+        pooled_output = self.dropout(pooled_output)  # (bs * num_choices, dim)
+        logits = self.classifier(pooled_output)  # (bs * num_choices, 1)
+        reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
+        return reshaped_logits
+
+
+
+        # undo reshaping
+
 
 
 class DistilBertFineTune(LightningModule):
+    """"
+    Fine tuning module for distilbert multiple choice
+    """
     def __init__(self):
         super().__init__()
-        self.ckpt = "distilbert-base-uncased"
-
-        self.distilbert: DistilBertForMultipleChoice = (
-            DistilBertForMultipleChoice.from_pretrained(self.ckpt)
-        )
+        self.distilbert = MyMultipleChoice()
+        self.ckpt = self.distilbert.ckpt
+        self.loss_fct = nn.CrossEntropyLoss()
 
 
 
 
     def training_step(self, batch, batch_idx):
+
         labels = batch["labels"]
-        outputs = self.distilbert(
+        logits = self.distilbert(
             input_ids=batch["input_ids"],
-            attention_mask=batch["attention_mask"],
-            labels=labels,
+            attention_mask=batch["attention_mask"]
         )
 
-        self.log("train_loss", outputs.loss)
-        preds = outputs.logits.argmax(dim=1)
+        loss = self.loss_fct(logits, labels)
+        self.log("train_loss", loss)
+
+        preds = logits.argmax(dim=1)
         acc = accuracy(preds, labels, task="multiclass", num_classes=5)
         self.log("train_accuracy", acc)
-        return outputs.loss
+        return loss
 
     def validation_step(self, batch, batch_idx):
         labels = batch["labels"]
-        outputs = self.distilbert(
+        logits = self.distilbert(
             input_ids=batch["input_ids"],
-            attention_mask=batch["attention_mask"],
-            labels=labels,
+            attention_mask=batch["attention_mask"]
         )
-        self.log("eval_loss", outputs.loss)
+        loss = self.loss_fct(logits, labels)
+        self.log("eval_loss", loss)
 
-        preds = outputs.logits.argmax(dim=1)
+        preds = logits.argmax(dim=1)
         acc = accuracy(preds, labels,task="multiclass",num_classes=5)
         self.log("eval_accuracy", acc)
         return preds
@@ -114,8 +152,7 @@ def main(hparams):
 
     wandb_logger:Logger = WandbLogger(log_model="all",project="case_hold_wrong_answers")
 
-    wandb.define_metric("eval_accuracy", summary="max")
-    wandb.define_metric("train_accuracy", summary="max")
+
     trainer = Trainer(accelerator=hparams.accelerator,
                       logger=wandb_logger,
                       devices=hparams.devices,
