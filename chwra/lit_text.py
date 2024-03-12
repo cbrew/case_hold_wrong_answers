@@ -13,6 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
 from torch import nn
+import torch.nn.functional as F
 from lightning.pytorch.loggers import WandbLogger, Logger
 from torchmetrics.functional import accuracy
 
@@ -24,11 +25,9 @@ class MultipleChoiceLightning(nn.Module):
     Mirrors DistilBertForMultipleChoice.
     """
 
-    def __init__(self,
-                 ckpt: str = 'distilbert-base-uncased',
-                 wrong_answers = False):
+    def __init__(self, ckpt: str = "distilbert-base-uncased", wrong_answers=False):
         super().__init__()
-        self.dim = 768
+        self.dim = 768  # think this is right for distilbery
         self.ckpt = ckpt
         self.distilbert = DistilBertModel.from_pretrained(self.ckpt)
         self.pre_classifier = nn.Linear(self.dim, self.dim)
@@ -62,11 +61,14 @@ class DistilBertFineTune(LightningModule):
     Fine tuning module for distilbert multiple choice
     """
 
-    def __init__(self,ckpt):
+    def __init__(self, ckpt: str, wrong_answers: bool =False) -> None:
         super().__init__()
-        self.distilbert = MultipleChoiceLightning(ckpt=ckpt)
+        self.distilbert = MultipleChoiceLightning(
+            ckpt=ckpt, wrong_answers=wrong_answers
+        )
         self.ckpt = ckpt
         self.loss_fct = nn.CrossEntropyLoss()
+        self.num_choices = 5
 
     def training_step(self, batch):
         labels = batch["labels"]
@@ -74,12 +76,30 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
 
-        loss = self.loss_fct(logits, labels)
+        if self.wrong_answers:
+            # we will calculate a Binary cross entropy loss for each of num_choices
+            # labels has shape bs*num_choices
+            bce_lossfcn = nn.BCEWithLogitsLoss()
+            total_loss = 0
+            # transform the labels to be positive when the answer is wrong, as
+            # will happen 4 times out of 5.
+            effective_labels = torch.tensor([[ int(i != label)
+                                               for i in range(self.num_choices)]
+                                             for label in labels],
+                dtype=torch.float32
+                                            )
+            for i in range(self.num_choices):
+                total_loss += bce_lossfcn(logits[:,i],effective_labels[:,i])
+            loss = total_loss
+        else:
+            loss = self.loss_fct(logits, labels)
+            preds = logits.argmax(dim=1)
+            acc = accuracy(preds, labels, task="multiclass", num_classes=5)
+            self.log("train_accuracy", acc)
+
         self.log("train_loss", loss)
 
-        preds = logits.argmax(dim=1)
-        acc = accuracy(preds, labels, task="multiclass", num_classes=5)
-        self.log("train_accuracy", acc)
+
         return loss
 
     def validation_step(self, batch):
@@ -105,7 +125,7 @@ def main(hparams):
     # recommended incantation to make good use of tensor cores.
     torch.set_float32_matmul_precision("medium")
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
-    model = DistilBertFineTune(hparams.cneckpoint)
+    model = DistilBertFineTune(ckpt=hparams.checkpoint,wrong_answers=hparams.wrong_answers)
     tokenizer = DistilBertTokenizer.from_pretrained(
         model.ckpt, use_fast=True, truncate=True, max_length=512
     )
@@ -166,14 +186,20 @@ def main(hparams):
 
 
 if __name__ == "__main__":
-    eligible_distilberts = ["distilbert/distilbert-base-cased",
-                            "distilbert/distilbert-base-uncased"]
+    eligible_distilberts = [
+        "distilbert/distilbert-base-cased",
+        "distilbert/distilbert-base-uncased",
+    ]
     parser = ArgumentParser()
     parser.add_argument("--accelerator", default="auto")
     parser.add_argument("--devices", default="auto")
     parser.add_argument("--epochs", default=2, type=int)
-    parser.add_argument("--checkpoint",type=str,
-                        choices=eligible_distilberts,
-                        default="distilbert/distilbert-base-cased")
+    parser.add_argument("--wrong_answers", action="store_true")
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        choices=eligible_distilberts,
+        default="distilbert/distilbert-base-cased",
+    )
     args = parser.parse_args()
     main(args)
