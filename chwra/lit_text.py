@@ -24,7 +24,6 @@ import wandb
 class DistilBertFineTune(LightningModule):
     def __init__(self):
         super().__init__()
-        self.save_hyperparameters()
         self.ckpt = "distilbert-base-uncased"
         # XXX
         self.distilbert: DistilBertForMultipleChoice = (
@@ -42,7 +41,8 @@ class DistilBertFineTune(LightningModule):
 
         self.log("train_loss", outputs.loss)
         preds = outputs.logits.argmax(dim=1)
-        acc = accuracy(preds, labels,task="multiclass",num_classes=5)
+        with torch.no_grad:
+            acc = accuracy(preds, labels, task="multiclass", num_classes=5)
         self.log("train_accuracy", acc)
         return preds
 
@@ -57,7 +57,8 @@ class DistilBertFineTune(LightningModule):
 
         self.log("eval_loss", outputs.loss)
         preds = outputs.logits.argmax(dim=1)
-        acc = accuracy(preds, labels,task="multiclass",num_classes=5)
+        with torch.no_grad:
+            acc = accuracy(preds, labels,task="multiclass",num_classes=5)
         self.log("eval_accuracy", acc)
         return preds
 
