@@ -177,16 +177,18 @@ def main(hparams):
         persistent_workers=True,
     )
 
-    wandb_logger: Logger = WandbLogger(
+    wandb_logger:Logger = WandbLogger(
         log_model="all", project="case_hold_wrong_answers"
     )
+    assert isinstance(wandb_logger, WandbLogger)
     wandb_logger.experiment.config.update({"model": hparams.checkpoint,
                                            "wrong_answers": hparams.wrong_answers,
                                            "max_epochs": hparams.epochs})
+    logger: Logger = wandb_logger
 
     trainer = Trainer(
         accelerator=hparams.accelerator,
-        logger=wandb_logger,
+        logger= logger,
         devices=hparams.devices,
         val_check_interval=0.25,  # large training set, check four times per epoch
         max_epochs=hparams.epochs,
