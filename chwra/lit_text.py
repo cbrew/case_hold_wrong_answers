@@ -109,7 +109,7 @@ class DistilBertFineTune(LightningModule):
         )
         if self.wrong_answers:
             loss_fn = nn.BCEWithLogitsLoss()
-            labels = nn.functional.one_hot(labels).float().view(-1)
+            labels = nn.functional.one_hot(labels,num_classes=5).float().view(-1)
             logits = logits.view(-1)
             loss = loss_fn(logits, labels)
             preds = (logits.sigmoid() > 0.5).float()
