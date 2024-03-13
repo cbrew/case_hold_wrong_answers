@@ -31,12 +31,13 @@ class MultipleChoiceLightning(nn.Module):
         self.distilbert = DistilBertModel.from_pretrained(self.ckpt)
         self.pre_classifier = nn.Linear(self.dim, self.dim)
         self.classifier = nn.Linear(self.dim, 1)
-        self.dropout = nn.Dropout(p=0.1)
+        self.dropout = nn.Dropout(p=0.1) # ??? dropout correct
         self.wrong_answers: bool = wrong_answers
 
     def forward(self, input_ids, attention_mask):
         """
-        forward pass of the main
+        forward pass of the model, mirrors how it is handled within the
+        huggingface multiple choice model.
         :param input_ids:
         :param attention_mask:
         :return:
@@ -108,10 +109,12 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         if self.wrong_answers:
-            loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0))
+            loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0)) # ??? weight
+            # reasoning here is to make the positive class "not wrong answer"
+            # but still require that wrong answers be driven towards zero.
             labels = nn.functional.one_hot(labels,num_classes=5).float()
             loss = loss_fn(logits, labels)
-            preds = (logits.sigmoid() > 0.5).float()
+            preds = (logits.sigmoid() > 0.5).float()  # ??? threshold
 
         else:
             loss_fn = nn.CrossEntropyLoss()
@@ -120,7 +123,8 @@ class DistilBertFineTune(LightningModule):
         return preds, loss, labels
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
+        optimizer = torch.optim.Adam(self.parameters(),
+                                     lr=1e-6) # ??? good learning rate
         return optimizer
 
 def main(hparams):
@@ -132,7 +136,7 @@ def main(hparams):
         ckpt=hparams.checkpoint, wrong_answers=hparams.wrong_answers
     )
     tokenizer = DistilBertTokenizer.from_pretrained(
-        model.ckpt, use_fast=True, truncate=True, max_length=512
+        model.ckpt, use_fast=True, truncate=True, max_length=512 # ??? truncation handling
     )
 
     def preprocess_fn(examples):
