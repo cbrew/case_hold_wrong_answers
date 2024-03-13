@@ -6,7 +6,7 @@ from transformers import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy
 
 
-accepted_keys = ["input_ids", "attention_mask", "label","labels"]
+accepted_keys = ["input_ids", "attention_mask", "label","labels", "token_type_ids"]
 @dataclass
 class DataCollatorForMultipleChoice:
     """

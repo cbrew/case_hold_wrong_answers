@@ -15,24 +15,38 @@ import torch
 from torch import nn
 from lightning.pytorch.loggers import WandbLogger, Logger
 import torchmetrics
+import transformers
 
 from chwra.collators import DataCollatorForMultipleChoice
 
 
 class MultipleChoiceLightning(nn.Module):
     """
-    Mirrors DistilBertForMultipleChoice.
+    Mirrors DistilBertForMultipleChoice. If we were to use other models such as RobertaForMultipleChoice
+    the forward method would differ.
+
+    Let's support distilbert/distilroberta-base
     """
 
     def __init__(self, ckpt: str = "distilbert-base-uncased", wrong_answers=False):
         super().__init__()
-        self.dim = 768  # think this is right for distilbery
-        self.ckpt = ckpt
-        self.distilbert = DistilBertModel.from_pretrained(self.ckpt)
-        self.pre_classifier = nn.Linear(self.dim, self.dim)
-        self.classifier = nn.Linear(self.dim, 1)
-        self.dropout = nn.Dropout(p=0.1) # ??? dropout correct
+
+        self.ckpt: str = ckpt
         self.wrong_answers: bool = wrong_answers
+
+        if "distilbert-base" in self.ckpt:
+            config = transformers.DistilBertConfig()
+            self.dim = config.hidden_dim
+            self.model = DistilBertModel.from_pretrained(self.ckpt)
+            self.pre_classifier = nn.Linear(self.dim, self.dim)
+            self.classifier = nn.Linear(self.dim, 1)
+            self.dropout = nn.Dropout(p=0.1)  # ??? dropout correct
+        elif "roberta-base" in self.ckpt:
+            config = transformers.RobertaConfig()
+            self.dim = config.hidden_dim
+            self.model = transformers.RobertaModel.from_pretrained(self.ckpt)
+            self.classifier = nn.Linear(self.dim, 1)
+            self.dropout = nn.Dropout(p=0.1)
 
     def forward(self, input_ids, attention_mask):
         """
@@ -42,10 +56,17 @@ class MultipleChoiceLightning(nn.Module):
         :param attention_mask:
         :return:
         """
+        if "roberta-base" in self.ckpt:
+            return self.forward_for_roberta(input_ids=input_ids, attention_mask=attention_mask)
+        else:
+            return self.forward_for_distilbert(input_ids=input_ids, attention_mask=attention_mask)
+
+
+    def forward_for_distilbert(self,input_ids, attention_mask):
         num_choices = input_ids.shape[1]
         input_ids = input_ids.view(-1, input_ids.size(-1))
         attention_mask = attention_mask.view(-1, attention_mask.size(-1))
-        outputs = self.distilbert(input_ids, attention_mask=attention_mask)
+        outputs = self.model(input_ids, attention_mask=attention_mask)
         hidden_state = outputs[0]
         pooled_output = hidden_state[:, 0]
         pooled_output = self.pre_classifier(pooled_output)  # (bs * num_choices, dim)
@@ -55,15 +76,38 @@ class MultipleChoiceLightning(nn.Module):
         reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
         return reshaped_logits
 
+    def forward_for_roberta(self, input_ids, attention_mask):
+        """
+        forward pass if the model is roberta. Very similar to what is done for distilbert
+        above, except there is no pre-classifier layer in the model.
+
+        :param input_ids:
+        :param attention_mask:
+        :return:
+        """
+
+        num_choices = input_ids.shape[1]
+        flat_input_ids = input_ids.view(-1, input_ids.size(-1))
+        flat_attention_mask = attention_mask.view(-1, attention_mask.size(-1))
+        outputs = self.model(
+            flat_input_ids,
+            attention_mask=flat_attention_mask,
+        )
+        pooled_output = outputs[1]
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+        reshaped_logits = logits.view(-1, num_choices)
+        return reshaped_logits
+
 
 class DistilBertFineTune(LightningModule):
     """ "
     Fine tuning module for distilbert multiple choice
     """
 
-    def __init__(self, ckpt: str,
-                 learning_rate:float,
-                 wrong_answers: bool = False) -> None:
+    def __init__(
+        self, ckpt: str, learning_rate: float, wrong_answers: bool = False
+    ) -> None:
         super().__init__()
         self.distilbert = MultipleChoiceLightning(
             ckpt=ckpt, wrong_answers=wrong_answers
@@ -83,12 +127,19 @@ class DistilBertFineTune(LightningModule):
             self.train_accuracy = torchmetrics.classification.Accuracy(
                 task="multiclass", num_classes=self.num_choices
             )
+            self.train_f1 = torchmetrics.classification.F1Score(
+                task="multiclass", average="micro", num_classes=self.num_choices
+            )
+
             self.val_accuracy = torchmetrics.classification.Accuracy(
                 task="multiclass", num_classes=self.num_choices
             )
 
+            self.val_f1 = torchmetrics.classification.F1Score(
+                task="multiclass", average="micro", num_classes=self.num_choices
+            )
 
-    def training_step(self, *argmts,**kwargs):
+    def training_step(self, *argmts, **kwargs):
         batch = argmts[0]
         preds, loss, labels = self.get_preds_loss_labels(batch)
         self.train_accuracy(preds, labels)
@@ -98,7 +149,7 @@ class DistilBertFineTune(LightningModule):
         self.log("train_loss", loss)
         return loss
 
-    def validation_step(self, *argmts,**kwargs):
+    def validation_step(self, *argmts, **kwargs):
         batch = argmts[0]
         preds, loss, labels = self.get_preds_loss_labels(batch)
         self.val_accuracy(preds, labels)
@@ -118,10 +169,10 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         if self.wrong_answers:
-            loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0)) # ??? weight
+            loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0))  # ??? weight
             # reasoning here is to make the positive class "not wrong answer"
             # but still require that wrong answers be driven towards zero.
-            labels = nn.functional.one_hot(labels,num_classes=5).float()
+            labels = nn.functional.one_hot(labels, num_classes=5).float()
             loss = loss_fn(logits, labels)
             preds = (logits.sigmoid() > 0.5).float()  # ??? threshold
 
@@ -132,9 +183,11 @@ class DistilBertFineTune(LightningModule):
         return preds, loss, labels
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(),
-                                     lr=1e-6) # ??? good learning rate
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=1e-6
+        )  # ??? good learning rate
         return optimizer
+
 
 def main(hparams):
     """Main function as suggested in documentation for Trainer"""
@@ -143,10 +196,14 @@ def main(hparams):
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
     model = DistilBertFineTune(
         learning_rate=hparams.learning_rate,
-        ckpt=hparams.checkpoint, wrong_answers=hparams.wrong_answers
+        ckpt=hparams.checkpoint,
+        wrong_answers=hparams.wrong_answers,
     )
     tokenizer = DistilBertTokenizer.from_pretrained(
-        model.ckpt, use_fast=True, truncate=True, max_length=512 # ??? truncation handling
+        model.ckpt,
+        use_fast=True,
+        truncate=True,
+        max_length=512,  # ??? truncation handling
     )
 
     def preprocess_fn(examples):
@@ -188,19 +245,20 @@ def main(hparams):
         persistent_workers=True,
     )
 
-    wandb_logger:Logger = WandbLogger(
+    wandb_logger: Logger = WandbLogger(
         log_model="all", project="case_hold_wrong_answers"
     )
     assert isinstance(wandb_logger, WandbLogger)
-    wandb_logger.experiment.config.update({"wrong_answers": hparams.wrong_answers,
-                                           "max_epochs": hparams.epochs})
+    wandb_logger.experiment.config.update(
+        {"wrong_answers": hparams.wrong_answers, "max_epochs": hparams.epochs}
+    )
     logger: Logger = wandb_logger
 
     trainer = Trainer(
         accelerator=hparams.accelerator,
-        logger= logger,
+        logger=logger,
         devices=hparams.devices,
-        val_check_interval=0.5,  # large training set, check twice per epoch
+        val_check_interval=0.5,
         max_epochs=hparams.epochs,
     )
     trainer.fit(
@@ -212,6 +270,7 @@ if __name__ == "__main__":
     eligible_distilberts = [
         "distilbert/distilbert-base-cased",
         "distilbert/distilbert-base-uncased",
+        "distilbert/distilroberta-base",
     ]
     parser = ArgumentParser()
     parser.add_argument("--accelerator", default="auto")
@@ -219,6 +278,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", default=2, type=int)
     parser.add_argument("--wrong_answers", action="store_true")
     parser.add_argument("--learning_rate", default=2e-6, type=float)
+    parser.add_argument("--dropout", default=0.1, type=float)
     parser.add_argument(
         "--checkpoint",
         type=str,
