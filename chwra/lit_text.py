@@ -4,15 +4,16 @@ Multiple choice for case hold using lightning.
 from argparse import ArgumentParser
 import os
 
-from pytorch_lightning import LightningModule, Trainer
-from transformers import (
-    DistilBertModel,
-)
+
+import lightning
+from lightning import LightningModule, Trainer
+from lightning.pytorch.loggers import WandbLogger, Logger
 from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
 from torch import nn
-from lightning.pytorch.loggers import WandbLogger, Logger
+
+
 import torchmetrics
 import transformers
 
@@ -36,7 +37,7 @@ class MultipleChoiceLightning(nn.Module):
         if "distilbert-base" in self.ckpt:
             config = transformers.DistilBertConfig()
             self.dim = config.hidden_dim
-            self.model = DistilBertModel.from_pretrained(self.ckpt)
+            self.model = transformers.DistilBertModel.from_pretrained(self.ckpt)
             self.pre_classifier = nn.Linear(self.dim, self.dim)
             self.classifier = nn.Linear(self.dim, 1)
             self.dropout = nn.Dropout(p=0.1)  # ??? dropout correct
@@ -235,6 +236,7 @@ def main(hparams):
         collate_fn=collator,
         num_workers=7,
         persistent_workers=True,
+        shuffle=True,
     )
     val_dataloader = DataLoader(
         tokenized_case_hold["validation"],
@@ -262,12 +264,13 @@ def main(hparams):
     )
     trainer.fit(
         model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader
+
     )
 
 
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
+    lightning.seed_everything(42)
     eligible_distilberts = [
         "distilbert/distilbert-base-cased",
         "distilbert/distilbert-base-uncased",
@@ -278,7 +281,7 @@ if __name__ == "__main__":
     parser.add_argument("--devices", default="auto")
     parser.add_argument("--epochs", default=2, type=int)
     parser.add_argument("--wrong_answers", action="store_true")
-    parser.add_argument("--learning_rate", default=2e-6, type=float)
+    parser.add_argument("--learning_rate", default=5e-5, type=float)
     parser.add_argument("--dropout", default=0.1, type=float)
     parser.add_argument(
         "--checkpoint",
