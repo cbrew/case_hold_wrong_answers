@@ -61,7 +61,9 @@ class DistilBertFineTune(LightningModule):
     Fine tuning module for distilbert multiple choice
     """
 
-    def __init__(self, ckpt: str, wrong_answers: bool = False) -> None:
+    def __init__(self, ckpt: str,
+                 learning_rate:float,
+                 wrong_answers: bool = False) -> None:
         super().__init__()
         self.distilbert = MultipleChoiceLightning(
             ckpt=ckpt, wrong_answers=wrong_answers
@@ -69,11 +71,14 @@ class DistilBertFineTune(LightningModule):
         self.ckpt = ckpt
         self.save_hyperparameters()
 
+        self.learning_rate = learning_rate
         self.num_choices = 5
         self.wrong_answers = wrong_answers
         if self.wrong_answers:
             self.train_accuracy = torchmetrics.classification.Accuracy(task="binary")
+            self.train_f1 = torchmetrics.classification.F1Score(task="binary")
             self.val_accuracy = torchmetrics.classification.Accuracy(task="binary")
+            self.val_f1 = torchmetrics.classification.F1Score(task="binary")
         else:
             self.train_accuracy = torchmetrics.classification.Accuracy(
                 task="multiclass", num_classes=self.num_choices
@@ -87,7 +92,9 @@ class DistilBertFineTune(LightningModule):
         batch = argmts[0]
         preds, loss, labels = self.get_preds_loss_labels(batch)
         self.train_accuracy(preds, labels)
+        self.train_f1(preds, labels)
         self.log("train_accuracy", self.train_accuracy)
+        self.log("train_f1", self.train_f1)
         self.log("train_loss", loss)
         return loss
 
@@ -95,8 +102,10 @@ class DistilBertFineTune(LightningModule):
         batch = argmts[0]
         preds, loss, labels = self.get_preds_loss_labels(batch)
         self.val_accuracy(preds, labels)
+        self.val_f1(preds, labels)
         self.log("eval_loss", loss)
         self.log("eval_accuracy", self.val_accuracy)
+        self.log("eval_f1", self.val_f1)
 
     def get_preds_loss_labels(self, batch):
         """
@@ -133,6 +142,7 @@ def main(hparams):
     torch.set_float32_matmul_precision("medium")
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
     model = DistilBertFineTune(
+        learning_rate=hparams.learning_rate,
         ckpt=hparams.checkpoint, wrong_answers=hparams.wrong_answers
     )
     tokenizer = DistilBertTokenizer.from_pretrained(
@@ -182,8 +192,7 @@ def main(hparams):
         log_model="all", project="case_hold_wrong_answers"
     )
     assert isinstance(wandb_logger, WandbLogger)
-    wandb_logger.experiment.config.update({"model": hparams.checkpoint,
-                                           "wrong_answers": hparams.wrong_answers,
+    wandb_logger.experiment.config.update({"wrong_answers": hparams.wrong_answers,
                                            "max_epochs": hparams.epochs})
     logger: Logger = wandb_logger
 
@@ -191,7 +200,7 @@ def main(hparams):
         accelerator=hparams.accelerator,
         logger= logger,
         devices=hparams.devices,
-        val_check_interval=0.25,  # large training set, check four times per epoch
+        val_check_interval=0.5,  # large training set, check twice per epoch
         max_epochs=hparams.epochs,
     )
     trainer.fit(
@@ -209,6 +218,7 @@ if __name__ == "__main__":
     parser.add_argument("--devices", default="auto")
     parser.add_argument("--epochs", default=2, type=int)
     parser.add_argument("--wrong_answers", action="store_true")
+    parser.add_argument("--learning_rate", default=2e-6, type=float)
     parser.add_argument(
         "--checkpoint",
         type=str,
