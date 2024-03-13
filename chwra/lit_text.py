@@ -123,7 +123,6 @@ class DistilBertFineTune(LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-6)
         return optimizer
 
-
 def main(hparams):
     """Main function as suggested in documentation for Trainer"""
     # recommended incantation to make good use of tensor cores.
