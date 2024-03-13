@@ -113,7 +113,7 @@ class DistilBertFineTune(LightningModule):
         if self.wrong_answers:
             # logits will be a flattened tensor with bs*num_choices elements in them.
             loss_fn = nn.BCEWithLogitsLoss()
-            labels = torch.nn.functional.one_hot(labels,num_classes=self.num_choices).float().reshape(-1)
+            labels = 1 = torch.nn.functional.one_hot(labels,num_classes=self.num_choices).float().reshape(-1)
             loss = loss_fn(logits, labels)
             preds = logits.sigmoid(dim=1) > 0.5
 
