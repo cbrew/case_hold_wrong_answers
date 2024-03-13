@@ -22,10 +22,7 @@ from chwra.collators import DataCollatorForMultipleChoice
 
 class MultipleChoiceLightning(nn.Module):
     """
-    Mirrors DistilBertForMultipleChoice. If we were to use other models such as RobertaForMultipleChoice
-    the forward method would differ.
-
-    Let's support distilbert/distilroberta-base
+    module supporting multiple choice for case hold using lightning
     """
 
     def __init__(self, ckpt: str = "distilbert-base-uncased", wrong_answers=False):
@@ -57,12 +54,21 @@ class MultipleChoiceLightning(nn.Module):
         :return:
         """
         if "roberta-base" in self.ckpt:
-            return self.forward_for_roberta(input_ids=input_ids, attention_mask=attention_mask)
-        else:
-            return self.forward_for_distilbert(input_ids=input_ids, attention_mask=attention_mask)
+            return self.forward_for_roberta(
+                input_ids=input_ids, attention_mask=attention_mask
+            )
 
+        return self.forward_for_distilbert(
+            input_ids=input_ids, attention_mask=attention_mask
+        )
 
-    def forward_for_distilbert(self,input_ids, attention_mask):
+    def forward_for_distilbert(self, input_ids, attention_mask):
+        """
+        Forward pass if the model is a distilbert.
+        :param input_ids:
+        :param attention_mask:
+        :return:
+        """
         num_choices = input_ids.shape[1]
         input_ids = input_ids.view(-1, input_ids.size(-1))
         attention_mask = attention_mask.view(-1, attention_mask.size(-1))
@@ -259,12 +265,12 @@ def main(hparams):
         accelerator=hparams.accelerator,
         logger=logger,
         devices=hparams.devices,
+        precision="bf16" if torch.cuda.is_available() else "32-true",
         val_check_interval=0.5,
         max_epochs=hparams.epochs,
     )
     trainer.fit(
         model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader
-
     )
 
 
