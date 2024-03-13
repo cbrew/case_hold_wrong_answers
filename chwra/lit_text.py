@@ -54,7 +54,6 @@ class MultipleChoiceLightning(nn.Module):
 
         if self.wrong_answers:
             return logits
-
         reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
         return reshaped_logits
 
@@ -90,16 +89,16 @@ class DistilBertFineTune(LightningModule):
         batch = argmts[0]
         preds, loss, labels = self.get_preds_loss_labels(batch)
         self.train_accuracy(preds, labels)
-        self.log("train_accuracy", self.train_accuracy, on_epoch=True)
-        self.log("train_loss", loss,on_epoch=True)
+        self.log("train_accuracy", self.train_accuracy)
+        self.log("train_loss", loss)
         return loss
 
     def validation_step(self, *argmts,**kwargs):
         batch = argmts[0]
         preds, loss, labels = self.get_preds_loss_labels(batch)
         self.val_accuracy(preds, labels)
-        self.log("eval_loss", loss, on_epoch=True)
-        self.log("eval_accuracy", self.val_accuracy, on_epoch=True)
+        self.log("eval_loss", loss)
+        self.log("eval_accuracy", self.val_accuracy)
 
     def get_preds_loss_labels(self, batch):
         """
@@ -115,7 +114,7 @@ class DistilBertFineTune(LightningModule):
             # logits will be a flattened tensor with bs*num_choices elements in them.
             loss_fn = nn.BCEWithLogitsLoss()
             loss = loss_fn(logits, labels.view(-1, 1))
-            preds = logits.softmax(dim=1)
+            preds = logits.sigmoid(dim=1) > 0.5
         else:
             loss_fn = nn.CrossEntropyLoss()
             loss = loss_fn(logits, labels)
