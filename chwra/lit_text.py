@@ -2,11 +2,10 @@
 Multiple choice for case hold using lightning.
 """
 from argparse import ArgumentParser
-
+import os
 
 from pytorch_lightning import LightningModule, Trainer
 from transformers import (
-    DistilBertTokenizer,
     DistilBertModel,
 )
 from torch.utils.data.dataloader import DataLoader
@@ -267,6 +266,8 @@ def main(hparams):
 
 
 if __name__ == "__main__":
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
     eligible_distilberts = [
         "distilbert/distilbert-base-cased",
         "distilbert/distilbert-base-uncased",
