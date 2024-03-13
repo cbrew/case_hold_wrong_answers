@@ -243,7 +243,7 @@ def main(hparams):
     collator = DataCollatorForMultipleChoice(tokenizer)
     train_dataloader = DataLoader(
         tokenized_case_hold["train"],
-        batch_size=16,
+        batch_size=8,
         collate_fn=collator,
         num_workers=7,
         persistent_workers=True,
@@ -251,7 +251,7 @@ def main(hparams):
     )
     val_dataloader = DataLoader(
         tokenized_case_hold["validation"],
-        batch_size=16,
+        batch_size=8,
         collate_fn=collator,
         num_workers=7,
         persistent_workers=True,
