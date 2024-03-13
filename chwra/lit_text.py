@@ -43,7 +43,7 @@ class MultipleChoiceLightning(nn.Module):
             self.dropout = nn.Dropout(p=0.1)  # ??? dropout correct
         elif "roberta-base" in self.ckpt:
             config = transformers.RobertaConfig()
-            self.dim = config.hidden_dim
+            self.dim = config.hidden_sizw
             self.model = transformers.RobertaModel.from_pretrained(self.ckpt)
             self.classifier = nn.Linear(self.dim, 1)
             self.dropout = nn.Dropout(p=0.1)
