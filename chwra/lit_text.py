@@ -71,8 +71,8 @@ class DistilBertFineTune(LightningModule):
         self.num_choices = 5
         self.wrong_answers = wrong_answers
         if self.wrong_answers:
-            self.train_accuracy = torchmetrics.classification.Accuracy(task="binary")
-            self.val_accuracy = torchmetrics.classification.Accuracy(task="binary")
+            self.train_accuracy = torchmetrics.classification.Accuracy(task="multilabel")
+            self.val_accuracy = torchmetrics.classification.Accuracy(task="multilabel")
         else:
             self.train_accuracy = torchmetrics.classification.Accuracy(
                 task="multiclass", num_classes=self.num_choices
@@ -108,11 +108,10 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         if self.wrong_answers:
-            loss_fn = nn.BCEWithLogitsLoss()
-            labels = 1 - nn.functional.one_hot(labels,num_classes=5).float().view(-1)
-            logits = logits.view(-1)
+            loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0))
+            labels = 1 - nn.functional.one_hot(labels,num_classes=5).float()
             loss = loss_fn(logits, labels)
-            preds = (logits.sigmoid() > 0.2).float()
+            preds = (logits.sigmoid()).float()
 
         else:
             loss_fn = nn.CrossEntropyLoss()
