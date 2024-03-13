@@ -115,7 +115,7 @@ class DistilBertFineTune(LightningModule):
             loss_fn = nn.BCEWithLogitsLoss()
             labels = 1 - torch.nn.functional.one_hot(labels,num_classes=self.num_choices).float().reshape(-1,1)
             loss = loss_fn(logits, labels)
-            preds = logits.sigmoid(dim=1) > 0.5
+            preds = logits.sigmoid() > 0.5
 
         else:
             loss_fn = nn.CrossEntropyLoss()
