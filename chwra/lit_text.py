@@ -51,9 +51,6 @@ class MultipleChoiceLightning(nn.Module):
         pooled_output = nn.ReLU()(pooled_output)  # (bs * num_choices, dim)
         pooled_output = self.dropout(pooled_output)  # (bs * num_choices, dim)
         logits = self.classifier(pooled_output)  # (bs * num_choices, 1)
-
-        if self.wrong_answers:
-            return logits.reshape(-1)
         reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
         return reshaped_logits
 
@@ -111,11 +108,11 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         if self.wrong_answers:
-            # logits will be a flattened tensor with bs*num_choices elements in them.
             loss_fn = nn.BCEWithLogitsLoss()
-            labels = 1 - torch.nn.functional.one_hot(labels,num_classes=self.num_choices).float().reshape(-1)
+            labels = nn.functional.one_hot(labels).float().view(-1)
+            logits = logits.view(-1)
             loss = loss_fn(logits, labels)
-            preds = logits.sigmoid() > 0.5
+            preds = (logits.sigmoid() > 0.5).float()
 
         else:
             loss_fn = nn.CrossEntropyLoss()

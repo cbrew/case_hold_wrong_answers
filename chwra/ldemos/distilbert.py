@@ -27,12 +27,13 @@ print(loss)
 
 with torch.no_grad():
     bce_lossfcn = BCEWithLogitsLoss()
-    other_labels = torch.tensor([0,0,0,1],dtype=torch.float32)
-    ls2 = 0
-    for i in range(logits.size(1)):
-        x = bce_lossfcn(logits[0, i], other_labels[i])
-        print(i,logits[0,i],other_labels[i],x)
-        ls2 += x
-    print(ls2)
+    other_labels = torch.tensor([[0,0,0,0]],dtype=torch.float32)
+
+    print(bce_lossfcn(logits, other_labels))
+
+    pred = logits.sigmoid() > 0.5
+    print(pred)
+
+
 
 
