@@ -199,10 +199,10 @@ def main(hparams):
         ckpt=hparams.checkpoint,
         wrong_answers=hparams.wrong_answers,
     )
-    tokenizer = DistilBertTokenizer.from_pretrained(
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
         model.ckpt,
         use_fast=True,
-        truncate=True,
+        truncate="only_first",
         max_length=512,  # ??? truncation handling
     )
 
