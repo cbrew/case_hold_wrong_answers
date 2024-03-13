@@ -218,7 +218,7 @@ def main(hparams):
         holdings = sum(examples["endings"], [])
 
         tokenized_examples = tokenizer(
-            contexts, holdings, truncation=True, max_length=512
+            contexts, holdings, truncation="only_first", max_length=512
         )
         features = {
             k: [v[i : i + 5] for i in range(0, len(v), 5)]
