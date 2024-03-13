@@ -29,20 +29,25 @@ class MultipleChoiceLightning(nn.Module):
         super().__init__()
 
         self.ckpt: str = ckpt
+        model = transformers.AutoModel.from_pretrained(ckpt)
+
+
         self.wrong_answers: bool = wrong_answers
 
-        if "distilbert-base" in self.ckpt:
+        if isinstance(model,transformers.DistilBertModel):
             self.dim = 768
-            self.model = transformers.DistilBertModel.from_pretrained(self.ckpt)
+            self.model = model
             self.pre_classifier = nn.Linear(self.dim, self.dim)
             self.classifier = nn.Linear(self.dim, 1)
             self.dropout = nn.Dropout(p=0.1)  # ??? dropout correct
-        elif "roberta-base" in self.ckpt:
-            config = transformers.RobertaConfig()
+        elif isinstance(model,(transformers.RobertaModel,transformers.MPNetModel)):
+            config = model.config
             self.dim = config.hidden_size
-            self.model = transformers.RobertaModel.from_pretrained(self.ckpt)
+            self.model = model
             self.classifier = nn.Linear(self.dim, 1)
             self.dropout = nn.Dropout(p=0.1)
+        else:
+            raise ValueError(f"Unsupported model {self.model}")
 
     def forward(self, input_ids, attention_mask):
         """
@@ -52,14 +57,15 @@ class MultipleChoiceLightning(nn.Module):
         :param attention_mask:
         :return:
         """
-        if "roberta-base" in self.ckpt:
+        if isinstance(self.model, transformers.RobertaModel) or \
+            isinstance(self.model, transformers.MPNetModel):
             return self.forward_for_roberta(
                 input_ids=input_ids, attention_mask=attention_mask
             )
-
-        return self.forward_for_distilbert(
-            input_ids=input_ids, attention_mask=attention_mask
-        )
+        elif isinstance(self.model, transformers.DistilBertModel):
+            return self.forward_for_distilbert(
+                input_ids=input_ids, attention_mask=attention_mask
+            )
 
     def forward_for_distilbert(self, input_ids, attention_mask):
         """
@@ -279,10 +285,12 @@ def main(hparams):
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     lightning.seed_everything(42)
-    eligible_distilberts = [
+    eligible_models = [
         "distilbert/distilbert-base-cased",
         "distilbert/distilbert-base-uncased",
         "distilbert/distilroberta-base",
+        "FacebookAI/roberta-base",
+        "sentence-transformers/all-mpnet-base-v2",
     ]
     parser = ArgumentParser()
     parser.add_argument("--accelerator", default="auto")
@@ -294,7 +302,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint",
         type=str,
-        choices=eligible_distilberts,
+        choices=eligible_models,
         default="distilbert/distilbert-base-cased",
     )
     args = parser.parse_args()
