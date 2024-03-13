@@ -259,7 +259,9 @@ def main(hparams):
         {"wrong_answers": hparams.wrong_answers, "max_epochs": hparams.epochs}
     )
     logger: Logger = wandb_logger
-
+    checkpoint_callback = lightning.pytorch.callbacks.ModelCheckpoint(
+        save_top_k=2, monitor="eval_f1"
+    )
     trainer = Trainer(
         accelerator=hparams.accelerator,
         logger=logger,
@@ -267,6 +269,7 @@ def main(hparams):
         precision="bf16" if torch.cuda.is_available() else "32-true",
         val_check_interval=0.5,
         max_epochs=hparams.epochs,
+        callbacks=[checkpoint_callback],
     )
     trainer.fit(
         model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader
