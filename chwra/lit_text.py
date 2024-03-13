@@ -57,8 +57,7 @@ class MultipleChoiceLightning(nn.Module):
         :param attention_mask:
         :return:
         """
-        if isinstance(self.model, transformers.RobertaModel) or \
-            isinstance(self.model, transformers.MPNetModel):
+        if isinstance(self.model, (transformers.RobertaModel, transformers.MPNetModel)):
             return self.forward_for_roberta(
                 input_ids=input_ids, attention_mask=attention_mask
             )
@@ -179,17 +178,18 @@ class DistilBertFineTune(LightningModule):
         logits = self.distilbert(
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
-        loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0))  # ??? weight
-        # reasoning here is to make the positive class "not wrong answer"
-        # but still require that wrong answers be driven towards zero.
-        labels = nn.functional.one_hot(labels, num_classes=5).float()
-        loss1 = loss_fn(logits, labels)
-        # preds1 = (logits.sigmoid() > 0.5).float()  # ??? threshold
-        loss_fn = nn.CrossEntropyLoss()
-        loss2 = loss_fn(logits, labels)
-        preds2 = logits.argmax(dim=1)
-        loss = loss1 + loss2
-        preds = preds2
+        if self.wrong_answers:
+            loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0))  # ??? weight
+            # reasoning here is to make the positive class "not wrong answer"
+            # but still require that wrong answers be driven towards zero.
+            labels = nn.functional.one_hot(labels, num_classes=5).float()
+            loss = loss_fn(logits, labels)
+            preds = (logits.sigmoid() > 0.5).float()  # ??? threshold
+
+        else:
+            loss_fn = nn.CrossEntropyLoss()
+            loss = loss_fn(logits, labels)
+            preds = logits.argmax(dim=1)
         return preds, loss, labels
 
     def configure_optimizers(self):
