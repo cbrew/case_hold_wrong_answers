@@ -71,8 +71,8 @@ class DistilBertFineTune(LightningModule):
         self.num_choices = 5
         self.wrong_answers = wrong_answers
         if self.wrong_answers:
-            self.train_accuracy = torchmetrics.classification.Accuracy()
-            self.val_accuracy = torchmetrics.classification.Accuracy()
+            self.train_accuracy = torchmetrics.classification.Accuracy(task="binary")
+            self.val_accuracy = torchmetrics.classification.Accuracy(task="binary")
         else:
             self.train_accuracy = torchmetrics.classification.Accuracy(
                 task="multiclass", num_classes=self.num_choices
