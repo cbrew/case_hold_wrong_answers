@@ -32,8 +32,7 @@ class MultipleChoiceLightning(nn.Module):
         self.wrong_answers: bool = wrong_answers
 
         if "distilbert-base" in self.ckpt:
-            config = transformers.DistilBertConfig()
-            self.dim = config.hidden_dim
+            self.dim = 768
             self.model = transformers.DistilBertModel.from_pretrained(self.ckpt)
             self.pre_classifier = nn.Linear(self.dim, self.dim)
             self.classifier = nn.Linear(self.dim, 1)
