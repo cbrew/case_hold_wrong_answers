@@ -129,26 +129,21 @@ class DistilBertFineTune(LightningModule):
         self.learning_rate = learning_rate
         self.num_choices = 5
         self.wrong_answers = wrong_answers
-        if self.wrong_answers:
-            self.train_accuracy = torchmetrics.classification.Accuracy(task="binary")
-            self.train_f1 = torchmetrics.classification.F1Score(task="binary")
-            self.val_accuracy = torchmetrics.classification.Accuracy(task="binary")
-            self.val_f1 = torchmetrics.classification.F1Score(task="binary")
-        else:
-            self.train_accuracy = torchmetrics.classification.Accuracy(
-                task="multiclass", num_classes=self.num_choices
-            )
-            self.train_f1 = torchmetrics.classification.F1Score(
-                task="multiclass", average="micro", num_classes=self.num_choices
-            )
 
-            self.val_accuracy = torchmetrics.classification.Accuracy(
+        self.train_accuracy = torchmetrics.classification.Accuracy(
                 task="multiclass", num_classes=self.num_choices
-            )
-
-            self.val_f1 = torchmetrics.classification.F1Score(
+        )
+        self.train_f1 = torchmetrics.classification.F1Score(
                 task="multiclass", average="micro", num_classes=self.num_choices
-            )
+        )
+
+        self.val_accuracy = torchmetrics.classification.Accuracy(
+                task="multiclass", num_classes=self.num_choices
+        )
+
+        self.val_f1 = torchmetrics.classification.F1Score(
+                task="multiclass", average="micro", num_classes=self.num_choices
+        )
 
     def training_step(self, *argmts, **kwargs):
         batch = argmts[0]
