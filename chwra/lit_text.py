@@ -180,6 +180,8 @@ class DistilBertFineTune(LightningModule):
         self.log("train_accuracy", self.train_accuracy)
         self.log("train_f1", self.train_f1)
         self.log("train_loss", loss)
+        self.log("train_precision", self.train_precision)
+        self.log("train_recall", self.train_recall)
         return loss
 
     def validation_step(self, *argmts, **kwargs):
@@ -200,6 +202,8 @@ class DistilBertFineTune(LightningModule):
         self.log("eval_loss", loss)
         self.log("eval_accuracy", self.val_accuracy)
         self.log("eval_f1", self.val_f1)
+        self.log("eval_precision", self.val_precision)
+        self.log("eval_recall", self.val_recall)
 
     def get_loss_wa(self, logits, labels):
         """
