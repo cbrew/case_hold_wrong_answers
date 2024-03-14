@@ -12,6 +12,7 @@ from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
 from torch import nn
+from torch.nn.functional import one_hot
 
 
 import torchmetrics
@@ -31,16 +32,15 @@ class MultipleChoiceLightning(nn.Module):
         self.ckpt: str = ckpt
         model = transformers.AutoModel.from_pretrained(ckpt)
 
-
         self.wrong_answers: bool = wrong_answers
 
-        if isinstance(model,transformers.DistilBertModel):
+        if isinstance(model, transformers.DistilBertModel):
             self.dim = 768
             self.model = model
             self.pre_classifier = nn.Linear(self.dim, self.dim)
             self.classifier = nn.Linear(self.dim, 1)
             self.dropout = nn.Dropout(p=0.1)  # ??? dropout correct
-        elif isinstance(model,(transformers.RobertaModel,transformers.MPNetModel)):
+        elif isinstance(model, (transformers.RobertaModel, transformers.MPNetModel)):
             config = model.config
             self.dim = config.hidden_size
             self.model = model
@@ -57,15 +57,19 @@ class MultipleChoiceLightning(nn.Module):
         :param attention_mask:
         :return:
         """
-        if isinstance(self.model, transformers.RobertaModel) or \
-            isinstance(self.model, transformers.MPNetModel):
-            return self.forward_for_roberta(
+        num_choices = input_ids.shape[1]
+        if isinstance(self.model, (transformers.RobertaModel, transformers.MPNetModel)):
+            logits = self.forward_for_roberta(
                 input_ids=input_ids, attention_mask=attention_mask
             )
         elif isinstance(self.model, transformers.DistilBertModel):
-            return self.forward_for_distilbert(
+            logits = self.forward_for_distilbert(
                 input_ids=input_ids, attention_mask=attention_mask
             )
+        else:
+            raise ValueError(f"Unsupported model {self.model}")
+        reshaped_logits = logits.view(-1, num_choices)
+        return reshaped_logits  #  (bs,num_choices)
 
     def forward_for_distilbert(self, input_ids, attention_mask):
         """
@@ -74,7 +78,7 @@ class MultipleChoiceLightning(nn.Module):
         :param attention_mask:
         :return:
         """
-        num_choices = input_ids.shape[1]
+
         input_ids = input_ids.view(-1, input_ids.size(-1))
         attention_mask = attention_mask.view(-1, attention_mask.size(-1))
         outputs = self.model(input_ids, attention_mask=attention_mask)
@@ -84,8 +88,7 @@ class MultipleChoiceLightning(nn.Module):
         pooled_output = nn.ReLU()(pooled_output)  # (bs * num_choices, dim)
         pooled_output = self.dropout(pooled_output)  # (bs * num_choices, dim)
         logits = self.classifier(pooled_output)  # (bs * num_choices, 1)
-        reshaped_logits = logits.view(-1, num_choices)  # (bs, num_choices)
-        return reshaped_logits
+        return logits
 
     def forward_for_roberta(self, input_ids, attention_mask):
         """
@@ -96,8 +99,6 @@ class MultipleChoiceLightning(nn.Module):
         :param attention_mask:
         :return:
         """
-
-        num_choices = input_ids.shape[1]
         flat_input_ids = input_ids.view(-1, input_ids.size(-1))
         flat_attention_mask = attention_mask.view(-1, attention_mask.size(-1))
         outputs = self.model(
@@ -107,8 +108,7 @@ class MultipleChoiceLightning(nn.Module):
         pooled_output = outputs[1]
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output)
-        reshaped_logits = logits.view(-1, num_choices)
-        return reshaped_logits
+        return logits
 
 
 class DistilBertFineTune(LightningModule):
@@ -120,7 +120,7 @@ class DistilBertFineTune(LightningModule):
         self, ckpt: str, learning_rate: float, wrong_answers: bool = False
     ) -> None:
         super().__init__()
-        self.distilbert = MultipleChoiceLightning(
+        self.mul_module = MultipleChoiceLightning(
             ckpt=ckpt, wrong_answers=wrong_answers
         )
         self.ckpt = ckpt
@@ -152,7 +152,11 @@ class DistilBertFineTune(LightningModule):
 
     def training_step(self, *argmts, **kwargs):
         batch = argmts[0]
-        preds, loss, labels = self.get_preds_loss_labels(batch)
+        if self.wrong_answers:
+            preds, loss, labels = self.get_preds_wa(batch)
+        else:
+            preds, loss, labels = self.get_preds_ra(batch)
+
         self.train_accuracy(preds, labels)
         self.train_f1(preds, labels)
         self.log("train_accuracy", self.train_accuracy)
@@ -162,36 +166,36 @@ class DistilBertFineTune(LightningModule):
 
     def validation_step(self, *argmts, **kwargs):
         batch = argmts[0]
-        preds, loss, labels = self.get_preds_loss_labels(batch)
+        labels = batch["labels"]  # (bs,num_choices)
+        logits = self.mul_module(
+            input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
+        )
+        preds = logits.argmax(dim=-1)
+        if self.wrong_answers:
+            loss = self.get_loss_wa(logits, labels)
+        else:
+            loss = self.get_loss_ra(logits, labels)
         self.val_accuracy(preds, labels)
         self.val_f1(preds, labels)
         self.log("eval_loss", loss)
         self.log("eval_accuracy", self.val_accuracy)
         self.log("eval_f1", self.val_f1)
 
-    def get_preds_loss_labels(self, batch):
+    def get_loss_wa(self, logits, labels):
         """
-        Shared function for training validation and testing.
-        :param batch:
-        :return:
+        get loss from wrong answers
         """
-        labels = batch["labels"]
-        logits = self.distilbert(
-            input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
-        )
-        if self.wrong_answers:
-            loss_fn = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(4.0))  # ??? weight
-            # reasoning here is to make the positive class "not wrong answer"
-            # but still require that wrong answers be driven towards zero.
-            labels = nn.functional.one_hot(labels, num_classes=5).float()
-            loss = loss_fn(logits, labels)
-            preds = (logits.sigmoid() > 0.5).float()  # ??? threshold
 
-        else:
-            loss_fn = nn.CrossEntropyLoss()
-            loss = loss_fn(logits, labels)
-            preds = logits.argmax(dim=1)
-        return preds, loss, labels
+        loss_fn = nn.BCEWithLogitsLoss()
+        hot_labels = one_hot(labels, num_classes=5).float()  # (bs,num_choices)
+        return loss_fn(logits, hot_labels)
+
+    def get_loss_ra(self, logits, labels):
+        """
+        Run the model and get loss and predictions from right answers
+        """
+        loss_fn = nn.CrossEntropyLoss()
+        return loss_fn(logits, labels)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
