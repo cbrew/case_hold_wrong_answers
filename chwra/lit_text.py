@@ -137,12 +137,28 @@ class DistilBertFineTune(LightningModule):
                 task="multiclass", average="micro", num_classes=self.num_choices
         )
 
+        self.train_precision = torchmetrics.classification.Precision(
+            task="multiclass", average="micro", num_classes=self.num_choices
+        )
+
+        self.train_recall = torchmetrics.classification.Recall(
+            task="multiclass", average="micro", num_classes=self.num_choices
+        )
+
         self.val_accuracy = torchmetrics.classification.Accuracy(
                 task="multiclass", num_classes=self.num_choices
         )
 
         self.val_f1 = torchmetrics.classification.F1Score(
                 task="multiclass", average="micro", num_classes=self.num_choices
+        )
+
+        self.val_precision = torchmetrics.classification.Precision(
+            task="multiclass", average="micro", num_classes=self.num_choices
+        )
+
+        self.val_recall = torchmetrics.classification.Recall(
+            task="multiclass", average="micro", num_classes=self.num_choices
         )
 
     def training_step(self, *argmts, **kwargs):
@@ -159,6 +175,8 @@ class DistilBertFineTune(LightningModule):
 
         self.train_accuracy(preds, labels)
         self.train_f1(preds, labels)
+        self.train_precision(preds, labels)
+        self.train_recall(preds, labels)
         self.log("train_accuracy", self.train_accuracy)
         self.log("train_f1", self.train_f1)
         self.log("train_loss", loss)
@@ -177,6 +195,8 @@ class DistilBertFineTune(LightningModule):
             loss = self.get_loss_ra(logits, labels)
         self.val_accuracy(preds, labels)
         self.val_f1(preds, labels)
+        self.val_precision(preds, labels)
+        self.val_recall(preds, labels)
         self.log("eval_loss", loss)
         self.log("eval_accuracy", self.val_accuracy)
         self.log("eval_f1", self.val_f1)
