@@ -152,10 +152,15 @@ class DistilBertFineTune(LightningModule):
 
     def training_step(self, *argmts, **kwargs):
         batch = argmts[0]
+        labels = batch["labels"]  # (bs,num_choices)
+        logits = self.mul_module(
+            input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
+        )
+        preds = logits.argmax(dim=-1)
         if self.wrong_answers:
-            preds, loss, labels = self.get_preds_wa(batch)
+            loss = self.get_loss_wa(logits, labels)
         else:
-            preds, loss, labels = self.get_preds_ra(batch)
+            loss = self.get_loss_ra(logits, labels)
 
         self.train_accuracy(preds, labels)
         self.train_f1(preds, labels)
