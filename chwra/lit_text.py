@@ -21,18 +21,25 @@ import transformers
 from chwra.collators import DataCollatorForMultipleChoice
 
 
+class ScaleLayer(nn.Module):
+   def __init__(self, init_value=1e-3):
+       super().__init__()
+       self.scale = nn.Parameter(torch.FloatTensor([init_value]))
+
+   def forward(self, input):
+       return input * self.scale
+
 class MultipleChoiceLightning(nn.Module):
     """
     module supporting multiple choice for case hold using lightning
     """
 
-    def __init__(self, ckpt: str = "distilbert-base-uncased", wrong_answers=False):
+    def __init__(self, ckpt: str = "distilbert-base-uncased"):
         super().__init__()
 
         self.ckpt: str = ckpt
         model = transformers.AutoModel.from_pretrained(ckpt)
 
-        self.wrong_answers: bool = wrong_answers
 
         if isinstance(model, transformers.DistilBertModel):
             self.dim = 768
@@ -117,11 +124,12 @@ class DistilBertFineTune(LightningModule):
     """
 
     def __init__(
-        self, ckpt: str, learning_rate: float, wrong_answers: bool = False
+        self, ckpt: str, learning_rate: float, wrong_answers: bool = False,
+            right_answers: bool = False
     ) -> None:
         super().__init__()
         self.mul_module = MultipleChoiceLightning(
-            ckpt=ckpt, wrong_answers=wrong_answers
+            ckpt=ckpt
         )
         self.ckpt = ckpt
         self.save_hyperparameters()
@@ -129,6 +137,9 @@ class DistilBertFineTune(LightningModule):
         self.learning_rate = learning_rate
         self.num_choices = 5
         self.wrong_answers = wrong_answers
+        self.right_answers = right_answers
+        if not self.right_answers or self.wrong_answers:
+            self.right_answers = False
 
         self.train_accuracy = torchmetrics.classification.Accuracy(
                 task="multiclass", num_classes=self.num_choices
@@ -191,10 +202,11 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         preds = logits.argmax(dim=-1)
+        loss = 0.0
         if self.wrong_answers:
-            loss = self.get_loss_wa(logits, labels)
+            loss += self.get_loss_wa(logits, labels)
         else:
-            loss = self.get_loss_ra(logits, labels)
+            loss += self.get_loss_ra(logits, labels)
         self.val_accuracy(preds, labels)
         self.val_f1(preds, labels)
         self.val_precision(preds, labels)
@@ -237,6 +249,7 @@ def main(hparams):
         learning_rate=hparams.learning_rate,
         ckpt=hparams.checkpoint,
         wrong_answers=hparams.wrong_answers,
+        right_answers=hparams.right_answers
     )
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model.ckpt,
@@ -325,6 +338,7 @@ if __name__ == "__main__":
     parser.add_argument("--devices", default="auto")
     parser.add_argument("--epochs", default=2, type=int)
     parser.add_argument("--wrong_answers", action="store_true")
+    parser.add_argument("--right_answers", action="store_true")
     parser.add_argument("--learning_rate", default=5e-5, type=float)
     parser.add_argument("--dropout", default=0.1, type=float)
     parser.add_argument(
