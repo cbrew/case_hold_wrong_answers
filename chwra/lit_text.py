@@ -1,10 +1,17 @@
 """
 Multiple choice for case hold using lightning.
+
+Exploring alternate loss functions. The current ones are too similar. They are highly correlated,
+even though they are superficially different, so they don't complement each other.
+What we want is one that explicitly asks for the
+embedding for the right answer to be ranked higher than those for the wrong answers, '
+whose ranking we don't care
+about.
 """
 from argparse import ArgumentParser
 import os
 
-
+from dotenv import load_dotenv
 import lightning
 from lightning import LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger, Logger
@@ -17,21 +24,23 @@ from torch.nn.functional import one_hot
 
 import torchmetrics
 import transformers
-
 from chwra.collators import DataCollatorForMultipleChoice
+load_dotenv()
 
 
 class LinearCombinationLayer(nn.Module):
     """
     Trainable linear combination.
     """
-    def __init__(self, init_value=0.5):
-       super().__init__()
-       self.weight = nn.Parameter(torch.FloatTensor([init_value]))
 
-    def forward(self, input1,input2):
-       p = torch.sigmoid(self.weight)
-       return p*input1 + (1-p)*input2
+    def __init__(self, init_value=0.5):
+        super().__init__()
+        self.weight = nn.Parameter(torch.FloatTensor([init_value]))
+
+    def forward(self, input1, input2):
+        p = torch.sigmoid(self.weight)
+        return p * input1 + (1 - p) * input2
+
 
 class MultipleChoiceLightning(nn.Module):
     """
@@ -43,7 +52,6 @@ class MultipleChoiceLightning(nn.Module):
 
         self.ckpt: str = ckpt
         model = transformers.AutoModel.from_pretrained(ckpt)
-
 
         if isinstance(model, transformers.DistilBertModel):
             self.dim = 768
@@ -130,12 +138,10 @@ class EnsembleClassifier(nn.Module):
         self.wa_classifier = MultipleChoiceLightning(ckpt)
         self.linear_combination = LinearCombinationLayer()
 
-    def forward(self, input_ids,attention_mask):
-        logits1 = self.ra_classifier(input_ids,attention_mask)
-        logits2 = self.wa_classifier(input_ids,attention_mask)
-        return self.linear_combination(logits1,logits2)
-
-
+    def forward(self, input_ids, attention_mask):
+        logits1 = self.ra_classifier(input_ids, attention_mask)
+        logits2 = self.wa_classifier(input_ids, attention_mask)
+        return self.linear_combination(logits1, logits2)
 
 
 class DistilBertFineTune(LightningModule):
@@ -144,13 +150,14 @@ class DistilBertFineTune(LightningModule):
     """
 
     def __init__(
-        self, ckpt: str, learning_rate: float, wrong_answers: bool = False,
-            right_answers: bool = False
+        self,
+        ckpt: str,
+        learning_rate: float,
+        wrong_answers: bool = False,
+        right_answers: bool = False,
     ) -> None:
         super().__init__()
-        self.mul_module = MultipleChoiceLightning(
-            ckpt=ckpt
-        )
+        self.mul_module = MultipleChoiceLightning(ckpt=ckpt)
         self.ckpt = ckpt
         self.save_hyperparameters()
 
@@ -162,10 +169,10 @@ class DistilBertFineTune(LightningModule):
             self.right_answers = False
 
         self.train_accuracy = torchmetrics.classification.Accuracy(
-                task="multiclass", num_classes=self.num_choices
+            task="multiclass", num_classes=self.num_choices
         )
         self.train_f1 = torchmetrics.classification.F1Score(
-                task="multiclass", average="micro", num_classes=self.num_choices
+            task="multiclass", average="micro", num_classes=self.num_choices
         )
 
         self.train_precision = torchmetrics.classification.Precision(
@@ -177,11 +184,11 @@ class DistilBertFineTune(LightningModule):
         )
 
         self.val_accuracy = torchmetrics.classification.Accuracy(
-                task="multiclass", num_classes=self.num_choices
+            task="multiclass", num_classes=self.num_choices
         )
 
         self.val_f1 = torchmetrics.classification.F1Score(
-                task="multiclass", average="micro", num_classes=self.num_choices
+            task="multiclass", average="micro", num_classes=self.num_choices
         )
 
         self.val_precision = torchmetrics.classification.Precision(
@@ -207,7 +214,6 @@ class DistilBertFineTune(LightningModule):
         if self.right_answers:
             loss2 = self.get_loss_ra(logits, labels)
         loss = loss1 + loss2
-
 
         self.train_accuracy(preds, labels)
         self.train_f1(preds, labels)
@@ -274,7 +280,7 @@ def main(hparams):
         learning_rate=hparams.learning_rate,
         ckpt=hparams.checkpoint,
         wrong_answers=hparams.wrong_answers,
-        right_answers=hparams.right_answers
+        right_answers=hparams.right_answers,
     )
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model.ckpt,
@@ -328,9 +334,11 @@ def main(hparams):
     )
     assert isinstance(wandb_logger, WandbLogger)
     wandb_logger.experiment.config.update(
-        {"wrong_answers": hparams.wrong_answers,
-         "right_answers": hparams.right_answers,
-         "max_epochs": hparams.epochs}
+        {
+            "wrong_answers": hparams.wrong_answers,
+            "right_answers": hparams.right_answers,
+            "max_epochs": hparams.epochs,
+        }
     )
     logger: Logger = wandb_logger
     checkpoint_callback = lightning.pytorch.callbacks.ModelCheckpoint(
@@ -340,6 +348,7 @@ def main(hparams):
         accelerator=hparams.accelerator,
         logger=logger,
         devices=hparams.devices,
+        accumulate_grad_batches=hparams.accumulate_grad_batches,
         precision="bf16-mixed" if torch.cuda.is_available() else "32-true",
         val_check_interval=0.5,
         max_epochs=hparams.epochs,
@@ -364,11 +373,12 @@ if __name__ == "__main__":
     parser.add_argument("--accelerator", default="auto")
     parser.add_argument("--devices", default="auto")
     parser.add_argument("--epochs", default=8, type=int)
+    parser.add_argument("--accumulate_grad_batches", default=8, type=int)
     parser.add_argument("--wrong_answers", action="store_true")
     parser.add_argument("--right_answers", action="store_true")
-    parser.add_argument("--learning_rate", default=5e-5, type=float)
+    parser.add_argument("--learning_rate", default=5e-5, type=float) # maybe too high
     parser.add_argument("--dropout", default=0.1, type=float)
-    parser.add_argument("--batch_size", default=16, type=int)
+    parser.add_argument("--batch_size", default=4, type=int)
     parser.add_argument(
         "--checkpoint",
         type=str,
