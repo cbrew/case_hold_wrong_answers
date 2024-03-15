@@ -21,13 +21,17 @@ import transformers
 from chwra.collators import DataCollatorForMultipleChoice
 
 
-class ScaleLayer(nn.Module):
-   def __init__(self, init_value=1e-3):
+class LinearCombinationLayer(nn.Module):
+    """
+    Trainable linear combination.
+    """
+    def __init__(self, init_value=0.5):
        super().__init__()
-       self.scale = nn.Parameter(torch.FloatTensor([init_value]))
+       self.weight = nn.Parameter(torch.FloatTensor([init_value]))
 
-   def forward(self, input):
-       return input * self.scale
+    def forward(self, input1,input2):
+       p = torch.sigmoid(self.weight)
+       return p*input1 + (1-p)*input2
 
 class MultipleChoiceLightning(nn.Module):
     """
@@ -118,6 +122,22 @@ class MultipleChoiceLightning(nn.Module):
         return logits
 
 
+class EnsembleClassifier(nn.Module):
+    def __init__(self, ckpt: str = "distilbert-base-uncased"):
+        super().__init__()
+        self.ckpt = ckpt
+        self.ra_classifier = MultipleChoiceLightning(ckpt)
+        self.wa_classifier = MultipleChoiceLightning(ckpt)
+        self.linear_combination = LinearCombinationLayer()
+
+    def forward(self, input_ids,attention_mask):
+        logits1 = self.ra_classifier(input_ids,attention_mask)
+        logits2 = self.wa_classifier(input_ids,attention_mask)
+        return self.linear_combination(logits1,logits2)
+
+
+
+
 class DistilBertFineTune(LightningModule):
     """ "
     Fine tuning module for distilbert multiple choice
@@ -179,11 +199,14 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         preds = logits.argmax(dim=-1)
-        loss = 0.0
+
+        loss1 = 0.0
         if self.wrong_answers:
-            loss += self.get_loss_wa(logits, labels)
+            loss1 = self.get_loss_wa(logits, labels)
+            loss2 = 0.0
         if self.right_answers:
-            loss += self.get_loss_ra(logits, labels)
+            loss2 = self.get_loss_ra(logits, labels)
+        loss = loss1 + loss2
 
 
         self.train_accuracy(preds, labels)
