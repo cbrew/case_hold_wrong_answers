@@ -207,7 +207,7 @@ class DistilBertFineTune(LightningModule):
         loss = 0.0
         if self.wrong_answers:
             loss += self.get_loss_wa(logits, labels)
-        else:
+        if self.right_answers:
             loss += self.get_loss_ra(logits, labels)
         self.val_accuracy(preds, labels)
         self.val_f1(preds, labels)
