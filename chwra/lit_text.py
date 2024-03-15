@@ -284,7 +284,7 @@ def main(hparams):
     collator = DataCollatorForMultipleChoice(tokenizer)
     train_dataloader = DataLoader(
         tokenized_case_hold["train"],
-        batch_size=8,
+        batch_size=hparams.batch_size,
         collate_fn=collator,
         num_workers=7,
         persistent_workers=True,
@@ -292,7 +292,7 @@ def main(hparams):
     )
     val_dataloader = DataLoader(
         tokenized_case_hold["validation"],
-        batch_size=8,
+        batch_size=hparams.batch_size,
         collate_fn=collator,
         num_workers=7,
         persistent_workers=True,
@@ -303,7 +303,9 @@ def main(hparams):
     )
     assert isinstance(wandb_logger, WandbLogger)
     wandb_logger.experiment.config.update(
-        {"wrong_answers": hparams.wrong_answers, "max_epochs": hparams.epochs}
+        {"wrong_answers": hparams.wrong_answers,
+         "right_answers": hparams.right_answers,
+         "max_epochs": hparams.epochs}
     )
     logger: Logger = wandb_logger
     checkpoint_callback = lightning.pytorch.callbacks.ModelCheckpoint(
@@ -336,11 +338,12 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--accelerator", default="auto")
     parser.add_argument("--devices", default="auto")
-    parser.add_argument("--epochs", default=2, type=int)
+    parser.add_argument("--epochs", default=8, type=int)
     parser.add_argument("--wrong_answers", action="store_true")
     parser.add_argument("--right_answers", action="store_true")
     parser.add_argument("--learning_rate", default=5e-5, type=float)
     parser.add_argument("--dropout", default=0.1, type=float)
+    parser.add_argument("--batch_size", default=16, type=int)
     parser.add_argument(
         "--checkpoint",
         type=str,
