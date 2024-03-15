@@ -179,10 +179,12 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         preds = logits.argmax(dim=-1)
+        loss = 0.0
         if self.wrong_answers:
-            loss = self.get_loss_wa(logits, labels)
-        else:
-            loss = self.get_loss_ra(logits, labels)
+            loss += self.get_loss_wa(logits, labels)
+        if self.right_answers:
+            loss += self.get_loss_ra(logits, labels)
+
 
         self.train_accuracy(preds, labels)
         self.train_f1(preds, labels)
