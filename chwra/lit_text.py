@@ -317,7 +317,7 @@ def main(hparams):
         accelerator=hparams.accelerator,
         logger=logger,
         devices=hparams.devices,
-        precision="bf16" if torch.cuda.is_available() else "32-true",
+        precision="bf16-mixed" if torch.cuda.is_available() else "32-true",
         val_check_interval=0.5,
         max_epochs=hparams.epochs,
         callbacks=[checkpoint_callback],
