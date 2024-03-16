@@ -152,20 +152,16 @@ class DistilBertFineTune(LightningModule):
 
     def __init__(
         self,
-        ckpt: str,
-        learning_rate: float,
-        wrong_answers: bool = False,
-        right_answers: bool = False,
-    ) -> None:
+        hparam) -> None:
         super().__init__()
         self.mul_module = MultipleChoiceLightning(ckpt=ckpt,learning_rate=learning_rate)
-        self.ckpt = ckpt
-        self.save_hyperparameters()
+        self.ckpt = hparam['ckpt']
+        self.save_hyperparameters(hparam)
 
-        self.learning_rate = learning_rate
+        self.learning_rate = hparam['learning_rate']
         self.num_choices = 5
-        self.wrong_answers = wrong_answers
-        self.right_answers = right_answers
+        self.wrong_answers = hparam['wrong_answers']
+        self.right_answers = hparam['right_answers']
         if not self.right_answers or self.wrong_answers:
             self.right_answers = False
 
@@ -268,7 +264,7 @@ class DistilBertFineTune(LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
             self.parameters(), lr=self.learning_rate
-        )  # ??? good learning rate
+        )
         return optimizer
 
 
@@ -277,12 +273,7 @@ def main(hparams):
     # recommended incantation to make good use of tensor cores.
     torch.set_float32_matmul_precision("medium")
     case_hold = datasets.load_dataset("lex_glue", "case_hold")
-    model = DistilBertFineTune(
-        learning_rate=hparams.learning_rate,
-        ckpt=hparams.checkpoint,
-        wrong_answers=hparams.wrong_answers,
-        right_answers=hparams.right_answers,
-    )
+    model = DistilBertFineTune(hparams)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model.ckpt,
         use_fast=True,
@@ -295,14 +286,14 @@ def main(hparams):
         Produces a collection of five token sequences, one per alternative, with the tokenizer
         merging the contexts and the holdings as desired
         """
-        contexts = [[context] * 5 for context in examples["context"]]
 
-        contexts = sum(contexts, [])
-
-        holdings = sum(examples["endings"], [])
+        holdings = []
+        for context,endings in zip(examples["context"],examples["endings"]):
+            for ending in endings:
+                holdings.append(context.replace("<HOLDING>",ending))
 
         tokenized_examples = tokenizer(
-            contexts, holdings, truncation="only_first", max_length=512
+            holdings, truncation=True, max_length=512
         )
         features = {
             k: [v[i : i + 5] for i in range(0, len(v), 5)]
