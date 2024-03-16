@@ -272,7 +272,7 @@ def main(hparams):
     """Main function as suggested in documentation for Trainer"""
     # recommended incantation to make good use of tensor cores.
     torch.set_float32_matmul_precision("medium")
-    case_hold = datasets.load_dataset("lex_glue", "case_hold")
+    case_hold = datasets.load_dataset("coastalcph/lex_glue", "case_hold")
     model = DistilBertFineTune(hparams)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model.ckpt,
