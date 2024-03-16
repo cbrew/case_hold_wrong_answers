@@ -47,10 +47,11 @@ class MultipleChoiceLightning(nn.Module):
     module supporting multiple choice for case hold using lightning
     """
 
-    def __init__(self, ckpt: str = "distilbert-base-uncased"):
+    def __init__(self, ckpt: str = "distilbert-base-uncased",learning_rate: float = 1e-6):
         super().__init__()
 
         self.ckpt: str = ckpt
+        self.learning_rate = learning_rate
         model = transformers.AutoModel.from_pretrained(ckpt)
 
         if isinstance(model, transformers.DistilBertModel):
@@ -157,7 +158,7 @@ class DistilBertFineTune(LightningModule):
         right_answers: bool = False,
     ) -> None:
         super().__init__()
-        self.mul_module = MultipleChoiceLightning(ckpt=ckpt)
+        self.mul_module = MultipleChoiceLightning(ckpt=ckpt,learning_rate=learning_rate)
         self.ckpt = ckpt
         self.save_hyperparameters()
 
@@ -208,6 +209,7 @@ class DistilBertFineTune(LightningModule):
         preds = logits.argmax(dim=-1)
 
         loss1 = 0.0
+        loss2 = 0.0
         if self.wrong_answers:
             loss1 = self.get_loss_wa(logits, labels)
             loss2 = 0.0
@@ -234,10 +236,6 @@ class DistilBertFineTune(LightningModule):
         )
         preds = logits.argmax(dim=-1)
         loss = 0.0
-        if self.wrong_answers:
-            loss += self.get_loss_wa(logits, labels)
-        if self.right_answers:
-            loss += self.get_loss_ra(logits, labels)
         self.val_accuracy(preds, labels)
         self.val_f1(preds, labels)
         self.val_precision(preds, labels)
@@ -266,7 +264,7 @@ class DistilBertFineTune(LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            self.parameters(), lr=1e-6
+            self.parameters(), lr=self.learning_rate
         )  # ??? good learning rate
         return optimizer
 
