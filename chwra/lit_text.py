@@ -147,7 +147,7 @@ class EnsembleClassifier(nn.Module):
 
 class DistilBertFineTune(LightningModule):
     """ "
-    Fine tuning module for distilbert multiple choice
+    Fine tuning module for multiple choice
     """
 
     def __init__(
@@ -208,14 +208,17 @@ class DistilBertFineTune(LightningModule):
         )
         preds = logits.argmax(dim=-1)
 
-        loss1 = 0.0
-        loss2 = 0.0
-        if self.wrong_answers:
-            loss1 = self.get_loss_wa(logits, labels)
-            loss2 = 0.0
-        if self.right_answers:
-            loss2 = self.get_loss_ra(logits, labels)
-        loss = loss1 + loss2
+
+
+        if self.wrong_answers and self.right_answers:
+            loss = self.get_loss_wa(logits, labels) * 0.10 + self.get_loss_ra(preds, labels)*0.9
+        elif self.wrong_answers:
+            loss = self.get_loss_wa(logits, labels)
+        elif self.right_answers:
+            loss = self.get_loss_ra(logits, labels)
+        else:
+            loss = self.get_loss_ra(logits, labels)
+
 
         self.train_accuracy(preds, labels)
         self.train_f1(preds, labels)
