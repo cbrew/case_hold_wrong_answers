@@ -154,7 +154,7 @@ class DistilBertFineTune(LightningModule):
         self,
         hparam) -> None:
         super().__init__()
-        self.mul_module = MultipleChoiceLightning(ckpt=hparam.ckpt,learning_rate=hparam.learning_rate)
+        self.mul_module = MultipleChoiceLightning(ckpt=hparam.checkpoint,learning_rate=hparam.learning_rate)
         self.ckpt = hparam.checkpoint
         self.save_hyperparameters(hparam)
 
