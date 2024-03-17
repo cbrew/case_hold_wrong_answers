@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 import lightning
 from lightning import LightningModule, Trainer
 from lightning.pytorch.loggers import WandbLogger, Logger
+from lightning.pytorch.callbacks import EarlyStopping,ModelCheckpoint
 from torch.utils.data.dataloader import DataLoader
 import datasets
 import torch
@@ -342,9 +343,10 @@ def main(hparams):
         }
     )
     logger: Logger = wandb_logger
-    checkpoint_callback = lightning.pytorch.callbacks.ModelCheckpoint(
+    checkpoint_callback = ModelCheckpoint(
         save_top_k=2, monitor="eval_f1"
     )
+    early_stopping = EarlyStopping('eval_f1')
     trainer = Trainer(
         accelerator=hparams.accelerator,
         logger=logger,
@@ -353,7 +355,7 @@ def main(hparams):
         precision="bf16-mixed" if torch.cuda.is_available() else "32-true",
         val_check_interval=0.5,
         max_epochs=hparams.epochs,
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback,early_stopping],
     )
     trainer.fit(
         model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader
