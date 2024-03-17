@@ -271,6 +271,7 @@ class DistilBertFineTune(LightningModule):
 def main(hparams):
     """Main function as suggested in documentation for Trainer"""
     # recommended incantation to make good use of tensor cores.
+    lightning.seed_everything(hparams.seed)
     torch.set_float32_matmul_precision("medium")
     case_hold = datasets.load_dataset("coastalcph/lex_glue", "case_hold")
     model = DistilBertFineTune(hparams)
@@ -353,7 +354,7 @@ def main(hparams):
 
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    lightning.seed_everything(42)
+
     eligible_models = [
         "distilbert/distilbert-base-cased",
         "distilbert/distilbert-base-uncased",
@@ -362,15 +363,16 @@ if __name__ == "__main__":
         "sentence-transformers/all-mpnet-base-v2",
     ]
     parser = ArgumentParser()
+    parser.add_argument("--seed",type=int, default=42)
     parser.add_argument("--accelerator", default="auto")
     parser.add_argument("--devices", default="auto")
-    parser.add_argument("--epochs", default=8, type=int)
+    parser.add_argument("--epochs", default=4, type=int)
     parser.add_argument("--accumulate_grad_batches", default=8, type=int)
     parser.add_argument("--wrong_answers", action="store_true")
     parser.add_argument("--right_answers", action="store_true")
     parser.add_argument("--learning_rate", default=5e-5, type=float) # maybe too high
     parser.add_argument("--dropout", default=0.1, type=float)
-    parser.add_argument("--batch_size", default=4, type=int)
+    parser.add_argument("--batch_size", default=16, type=int)
     parser.add_argument(
         "--checkpoint",
         type=str,
