@@ -344,7 +344,7 @@ def main(hparams):
     )
     logger: Logger = wandb_logger
     checkpoint_callback = ModelCheckpoint(
-        save_top_k=2, monitor="eval_f1"
+        save_top_k=4, monitor="eval_f1"
     )
     early_stopping = EarlyStopping('eval_f1')
     trainer = Trainer(
@@ -353,7 +353,7 @@ def main(hparams):
         devices=hparams.devices,
         accumulate_grad_batches=hparams.accumulate_grad_batches,
         precision="bf16-mixed" if torch.cuda.is_available() else "32-true",
-        val_check_interval=0.5,
+        val_check_interval=0.20,
         max_epochs=hparams.epochs,
         callbacks=[checkpoint_callback,early_stopping],
     )
