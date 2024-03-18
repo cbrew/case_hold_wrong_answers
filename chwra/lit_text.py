@@ -349,7 +349,7 @@ def main(hparams):
     checkpoint_callback = ModelCheckpoint(
         save_top_k=4, monitor="eval_f1"
     )
-    early_stopping = EarlyStopping('eval_f1')
+    early_stopping = EarlyStopping('eval_f1', patience=3,mode="max")
     trainer = Trainer(
         accelerator=hparams.accelerator,
         logger=logger,
