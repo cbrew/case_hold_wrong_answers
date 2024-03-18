@@ -375,6 +375,8 @@ if __name__ == "__main__":
         "FacebookAI/roberta-base",
         "FacebookAI/roberta-large",
         "sentence-transformers/all-mpnet-base-v2",
+        "lexlms/legal-roberta-base",
+        "lexlms/legal-roberta-large",
     ]
     parser = ArgumentParser()
     parser.add_argument("--seed",type=int, default=42)
