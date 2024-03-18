@@ -271,8 +271,11 @@ class DistilBertFineTune(LightningModule):
         return loss_fn(logits, labels)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.learning_rate
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=self.learning_rate,
+            weight_decay=0.06,
+
         )
         return optimizer
 
@@ -370,6 +373,7 @@ if __name__ == "__main__":
         "distilbert/distilbert-base-uncased",
         "distilbert/distilroberta-base",
         "FacebookAI/roberta-base",
+        "FacebookAI/roberta-large",
         "sentence-transformers/all-mpnet-base-v2",
     ]
     parser = ArgumentParser()
