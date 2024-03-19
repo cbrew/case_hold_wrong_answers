@@ -1,12 +1,7 @@
 """
 Multiple choice for case hold using lightning.
 
-Exploring alternate loss functions. The current ones are too similar. They are highly correlated,
-even though they are superficially different, so they don't complement each other.
-What we want is one that explicitly asks for the
-embedding for the right answer to be ranked higher than those for the wrong answers, '
-whose ranking we don't care
-about.
+Alternate loss function for case hold,
 """
 from argparse import ArgumentParser
 import os
@@ -155,14 +150,14 @@ class DistilBertFineTune(LightningModule):
         self,
         hparam) -> None:
         super().__init__()
-        self.mul_module = MultipleChoiceLightning(ckpt=hparam.checkpoint,learning_rate=hparam.learning_rate)
-        self.ckpt = hparam.checkpoint
+        self.mul_module = MultipleChoiceLightning(ckpt=hparam['checkpoint'],learning_rate=hparam['learning_rate'])
+        self.ckpt = hparam['checkpoint']
         self.save_hyperparameters(hparam)
 
-        self.learning_rate = hparam.learning_rate
+        self.learning_rate = hparam['learning_rate']
         self.num_choices = 5
-        self.wrong_answers = hparam.right_answers
-        self.right_answers = hparam.wrong_answers
+        self.wrong_answers = hparam['wrong_answers']
+        self.right_answers = hparam['right_answers']
         if not self.right_answers or self.wrong_answers:
             self.right_answers = False
 
