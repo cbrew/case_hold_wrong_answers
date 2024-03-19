@@ -21,7 +21,7 @@ from torch.nn.functional import one_hot
 import torchmetrics
 import transformers
 from chwra.collators import DataCollatorForMultipleChoice
-load_dotenv()
+load_dotenv()\
 
 
 class LinearCombinationLayer(nn.Module):
@@ -342,7 +342,10 @@ def main(hparams):
     )
     logger: Logger = wandb_logger
     checkpoint_callback = ModelCheckpoint(
-        save_top_k=4, monitor="eval_f1"
+        save_top_k=1,
+        monitor="eval_f1",
+        dirpath="experiments",
+        filename="case-hold-{epoch:02d}-{val_loss:.2f}"
     )
     early_stopping = EarlyStopping('eval_f1', patience=3,mode="max")
     trainer = Trainer(
