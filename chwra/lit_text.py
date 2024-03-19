@@ -1,7 +1,7 @@
 """
 Multiple choice for case hold using lightning.
 
-Alternate loss function for case hold,
+Alternate loss function for case hold.
 """
 from argparse import ArgumentParser
 import os
