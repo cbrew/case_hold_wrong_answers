@@ -21,143 +21,31 @@ from torch.nn.functional import one_hot
 import torchmetrics
 import transformers
 from chwra.collators import DataCollatorForMultipleChoice
-load_dotenv()\
-
-
-class LinearCombinationLayer(nn.Module):
-    """
-    Trainable linear combination.
-    """
-
-    def __init__(self, init_value=0.5):
-        super().__init__()
-        self.weight = nn.Parameter(torch.FloatTensor([init_value]))
-
-    def forward(self, input1, input2):
-        p = torch.sigmoid(self.weight)
-        return p * input1 + (1 - p) * input2
-
-
-class MultipleChoiceLightning(nn.Module):
-    """
-    module supporting multiple choice for case hold using lightning
-    """
-
-    def __init__(self, ckpt: str = "distilbert-base-uncased",learning_rate: float = 1e-6):
-        super().__init__()
-
-        self.ckpt: str = ckpt
-        self.learning_rate = learning_rate
-        model = transformers.AutoModel.from_pretrained(ckpt)
-
-        if isinstance(model, transformers.DistilBertModel):
-            self.dim = 768
-            self.model = model
-            self.pre_classifier = nn.Linear(self.dim, self.dim)
-            self.classifier = nn.Linear(self.dim, 1)
-            self.dropout = nn.Dropout(p=0.1)  # ??? dropout correct
-        elif isinstance(model, (transformers.RobertaModel, transformers.MPNetModel)):
-            config = model.config
-            self.dim = config.hidden_size
-            self.model = model
-            self.classifier = nn.Linear(self.dim, 1)
-            self.dropout = nn.Dropout(p=0.1)
-        else:
-            raise ValueError(f"Unsupported model {self.model}")
-
-    def forward(self, input_ids, attention_mask):
-        """
-        forward pass of the model, mirrors how it is handled within the
-        huggingface multiple choice model.
-        :param input_ids:
-        :param attention_mask:
-        :return:
-        """
-        num_choices = input_ids.shape[1]
-        if isinstance(self.model, (transformers.RobertaModel, transformers.MPNetModel)):
-            logits = self.forward_for_roberta(
-                input_ids=input_ids, attention_mask=attention_mask
-            )
-        elif isinstance(self.model, transformers.DistilBertModel):
-            logits = self.forward_for_distilbert(
-                input_ids=input_ids, attention_mask=attention_mask
-            )
-        else:
-            raise ValueError(f"Unsupported model {self.model}")
-        reshaped_logits = logits.view(-1, num_choices)
-        return reshaped_logits  #  (bs,num_choices)
-
-    def forward_for_distilbert(self, input_ids, attention_mask):
-        """
-        Forward pass if the model is a distilbert.
-        :param input_ids:
-        :param attention_mask:
-        :return:
-        """
-
-        input_ids = input_ids.view(-1, input_ids.size(-1))
-        attention_mask = attention_mask.view(-1, attention_mask.size(-1))
-        outputs = self.model(input_ids, attention_mask=attention_mask)
-        hidden_state = outputs[0]
-        pooled_output = hidden_state[:, 0]
-        pooled_output = self.pre_classifier(pooled_output)  # (bs * num_choices, dim)
-        pooled_output = nn.ReLU()(pooled_output)  # (bs * num_choices, dim)
-        pooled_output = self.dropout(pooled_output)  # (bs * num_choices, dim)
-        logits = self.classifier(pooled_output)  # (bs * num_choices, 1)
-        return logits
-
-    def forward_for_roberta(self, input_ids, attention_mask):
-        """
-        forward pass if the model is roberta. Very similar to what is done for distilbert
-        above, except there is no pre-classifier layer in the model.
-
-        :param input_ids:
-        :param attention_mask:
-        :return:
-        """
-        flat_input_ids = input_ids.view(-1, input_ids.size(-1))
-        flat_attention_mask = attention_mask.view(-1, attention_mask.size(-1))
-        outputs = self.model(
-            flat_input_ids,
-            attention_mask=flat_attention_mask,
-        )
-        pooled_output = outputs[1]
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
-        return logits
-
-
-class EnsembleClassifier(nn.Module):
-    def __init__(self, ckpt: str = "distilbert-base-uncased"):
-        super().__init__()
-        self.ckpt = ckpt
-        self.ra_classifier = MultipleChoiceLightning(ckpt)
-        self.wa_classifier = MultipleChoiceLightning(ckpt)
-        self.linear_combination = LinearCombinationLayer()
-
-    def forward(self, input_ids, attention_mask):
-        logits1 = self.ra_classifier(input_ids, attention_mask)
-        logits2 = self.wa_classifier(input_ids, attention_mask)
-        return self.linear_combination(logits1, logits2)
+from chwra.modules import MultipleChoiceLightning
 
 
 class DistilBertFineTune(LightningModule):
     """ "
-    Fine tuning module for multiple choice
+    Fine tuning module for multiple choice.
     """
 
     def __init__(
         self,
-        hparam) -> None:
+        model,
+        model_name,
+        wrong_answers = False,
+        right_answers = True,
+        learning_rate = 1e-6,
+        dropout=0.1,
+        **kwargs) -> None:
         super().__init__()
-        self.mul_module = MultipleChoiceLightning(ckpt=hparam.checkpoint,learning_rate=hparam.learning_rate)
-        self.ckpt = hparam.checkpoint
-        self.save_hyperparameters(hparam)
-
-        self.learning_rate = hparam.learning_rate
+        self.mul_module = MultipleChoiceLightning(model=model,dropout=dropout)
+        self.ckpt = model_name
+        self.save_hyperparameters({})
+        self.learning_rate =  learning_rate
         self.num_choices = 5
-        self.wrong_answers = hparam.wrong_answers
-        self.right_answers = hparam.right_answers
+        self.wrong_answers = wrong_answers
+        self.right_answers = right_answers
         if not self.right_answers or self.wrong_answers:
             self.right_answers = False
 
@@ -191,7 +79,18 @@ class DistilBertFineTune(LightningModule):
         self.val_recall = torchmetrics.classification.Recall(
             task="multiclass", average="micro", num_classes=self.num_choices
         )
+        self.save_hyperparameters()
 
+    def loss_calc(self, logits, labels, preds):
+        if self.wrong_answers and self.right_answers:
+            loss = self.get_loss_wa(logits, labels) * 0.10 + self.get_loss_ra(preds, labels) * 0.9
+        elif self.wrong_answers:
+            loss = self.get_loss_wa(logits, labels)
+        elif self.right_answers:
+            loss = self.get_loss_ra(logits, labels)
+        else:
+            loss = self.get_loss_ra(logits, labels)
+        return loss
     def training_step(self, *argmts, **kwargs):
         batch = argmts[0]
         labels = batch["labels"]  # (bs,num_choices)
@@ -199,19 +98,7 @@ class DistilBertFineTune(LightningModule):
             input_ids=batch["input_ids"], attention_mask=batch["attention_mask"]
         )
         preds = logits.argmax(dim=-1)
-
-
-
-        if self.wrong_answers and self.right_answers:
-            loss = self.get_loss_wa(logits, labels) * 0.10 + self.get_loss_ra(preds, labels)*0.9
-        elif self.wrong_answers:
-            loss = self.get_loss_wa(logits, labels)
-        elif self.right_answers:
-            loss = self.get_loss_ra(logits, labels)
-        else:
-            loss = self.get_loss_ra(logits, labels)
-
-
+        loss = self.loss_calc(logits, labels, preds)
         self.train_accuracy(preds, labels)
         self.train_f1(preds, labels)
         self.train_precision(preds, labels)
@@ -223,6 +110,9 @@ class DistilBertFineTune(LightningModule):
         self.log("train_recall", self.train_recall)
         return loss
 
+
+
+
     def validation_step(self, *argmts, **kwargs):
         batch = argmts[0]
         labels = batch["labels"]  # (bs,num_choices)
@@ -231,14 +121,8 @@ class DistilBertFineTune(LightningModule):
         )
         preds = logits.argmax(dim=-1)
         with torch.no_grad():
-            if self.wrong_answers and self.right_answers:
-                loss = self.get_loss_wa(logits, labels) * 0.10 + self.get_loss_ra(preds, labels) * 0.9
-            elif self.wrong_answers:
-                loss = self.get_loss_wa(logits, labels)
-            elif self.right_answers:
-                loss = self.get_loss_ra(logits, labels)
-            else:
-                loss = self.get_loss_ra(logits, labels)
+            loss = self.loss_calc(logits,labels,preds)
+
         self.val_accuracy(preds, labels)
         self.val_f1(preds, labels)
         self.val_precision(preds, labels)
@@ -275,13 +159,21 @@ class DistilBertFineTune(LightningModule):
         return optimizer
 
 
-def main(hparams):
+def main(checkpoint=None,seed=42,
+         learning_rate=1e-6,
+         batch_size=8,
+         accumulate_grad_batches=4,
+         right_answers=True,
+         wrong_answers=False,
+         epochs=1,
+         accelerate="auto",):
     """Main function as suggested in documentation for Trainer"""
     # recommended incantation to make good use of tensor cores.
-    lightning.seed_everything(hparams.seed)
+    lightning.seed_everything(seed)
     torch.set_float32_matmul_precision("medium")
     case_hold = datasets.load_dataset("coastalcph/lex_glue", "case_hold")
-    model = DistilBertFineTune(hparams)
+    base_model = transformers.AutoModel.from_pretrained(checkpoint)
+    model = DistilBertFineTune(base_model,model_name=checkpoint,learning_rate=learning_rate)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model.ckpt,
         use_fast=True,
@@ -315,7 +207,7 @@ def main(hparams):
     collator = DataCollatorForMultipleChoice(tokenizer)
     train_dataloader = DataLoader(
         tokenized_case_hold["train"],
-        batch_size=hparams.batch_size,
+        batch_size=batch_size,
         collate_fn=collator,
         num_workers=7,
         persistent_workers=True,
@@ -323,7 +215,7 @@ def main(hparams):
     )
     val_dataloader = DataLoader(
         tokenized_case_hold["validation"],
-        batch_size=hparams.batch_size,
+        batch_size=batch_size,
         collate_fn=collator,
         num_workers=7,
         persistent_workers=True,
@@ -335,9 +227,9 @@ def main(hparams):
     assert isinstance(wandb_logger, WandbLogger)
     wandb_logger.experiment.config.update(
         {
-            "wrong_answers": hparams.wrong_answers,
-            "right_answers": hparams.right_answers,
-            "max_epochs": hparams.epochs,
+            "wrong_answers": wrong_answers,
+            "right_answers": right_answers,
+            "max_epochs": epochs,
         }
     )
     logger: Logger = wandb_logger
@@ -349,13 +241,12 @@ def main(hparams):
     )
     early_stopping = EarlyStopping('eval_f1', patience=3,mode="max")
     trainer = Trainer(
-        accelerator=hparams.accelerator,
+        accelerator=accelerate,
         logger=logger,
-        devices=hparams.devices,
-        accumulate_grad_batches=hparams.accumulate_grad_batches,
+        accumulate_grad_batches=accumulate_grad_batches,
         precision="bf16-mixed" if torch.cuda.is_available() else "32-true",
         val_check_interval=0.20,
-        max_epochs=hparams.epochs,
+        max_epochs=epochs,
         callbacks=[checkpoint_callback,early_stopping],
     )
     trainer.fit(
@@ -363,9 +254,10 @@ def main(hparams):
     )
 
 
+
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
+    load_dotenv()
     eligible_models = [
         "distilbert/distilbert-base-cased",
         "distilbert/distilbert-base-uncased",
@@ -394,4 +286,4 @@ if __name__ == "__main__":
         default="distilbert/distilbert-base-cased",
     )
     args = parser.parse_args()
-    main(args)
+    main(**vars(args))
