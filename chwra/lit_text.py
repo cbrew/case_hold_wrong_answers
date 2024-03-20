@@ -166,7 +166,7 @@ def main(checkpoint=None,seed=42,
          right_answers=True,
          wrong_answers=False,
          epochs=1,
-         accelerate="auto",):
+         accelerator="auto",):
     """Main function as suggested in documentation for Trainer"""
     # recommended incantation to make good use of tensor cores.
     lightning.seed_everything(seed)
@@ -237,11 +237,11 @@ def main(checkpoint=None,seed=42,
         save_top_k=1,
         monitor="eval_f1",
         dirpath="experiments",
-        filename="case-hold-{epoch:02d}-{val_loss:.2f}"
+        filename="case-hold-{epoch:02d}-{eval_f1:.4f}"
     )
     early_stopping = EarlyStopping('eval_f1', patience=3,mode="max")
     trainer = Trainer(
-        accelerator=accelerate,
+        accelerator=accelerator,
         logger=logger,
         accumulate_grad_batches=accumulate_grad_batches,
         precision="bf16-mixed" if torch.cuda.is_available() else "32-true",
