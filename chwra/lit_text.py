@@ -159,13 +159,15 @@ class DistilBertFineTune(LightningModule):
         return optimizer
 
 
-def main(checkpoint=None,seed=42,
+def main(checkpoint=None,
+         seed=42,
          learning_rate=1e-6,
          batch_size=8,
          accumulate_grad_batches=4,
          right_answers=True,
          wrong_answers=False,
          epochs=1,
+         dropout=0.1,
          accelerator="auto",):
     """Main function as suggested in documentation for Trainer"""
     # recommended incantation to make good use of tensor cores.
@@ -173,7 +175,7 @@ def main(checkpoint=None,seed=42,
     torch.set_float32_matmul_precision("medium")
     case_hold = datasets.load_dataset("coastalcph/lex_glue", "case_hold")
     base_model = transformers.AutoModel.from_pretrained(checkpoint)
-    model = DistilBertFineTune(base_model,model_name=checkpoint,learning_rate=learning_rate)
+    model = DistilBertFineTune(base_model,model_name=checkpoint,learning_rate=learning_rate,dropout=dropout)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model.ckpt,
         use_fast=True,
