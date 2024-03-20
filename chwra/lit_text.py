@@ -254,7 +254,6 @@ def main(checkpoint=None,seed=42,
     )
 
 
-
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     load_dotenv()
