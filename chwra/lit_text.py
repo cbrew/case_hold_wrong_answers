@@ -271,7 +271,6 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--seed",type=int, default=42)
     parser.add_argument("--accelerator", default="auto")
-    parser.add_argument("--devices", default="auto")
     parser.add_argument("--epochs", default=4, type=int)
     parser.add_argument("--accumulate_grad_batches", default=8, type=int)
     parser.add_argument("--wrong_answers", action="store_true")
