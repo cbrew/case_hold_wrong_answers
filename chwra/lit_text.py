@@ -79,7 +79,7 @@ class DistilBertFineTune(LightningModule):
         self.val_recall = torchmetrics.classification.Recall(
             task="multiclass", average="micro", num_classes=self.num_choices
         )
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=[model])
 
     def loss_calc(self, logits, labels, preds):
         if self.wrong_answers and self.right_answers:
